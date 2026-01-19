@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required. Please set it in .env file.")
+
 # Initialize bot and dispatcher
 bot = None
 dp = None

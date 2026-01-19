@@ -72,6 +72,7 @@ class SettingRequest(BaseModel):
 
 # Simple session management
 sessions = {}
+SESSION_EXPIRY_HOURS = 24
 
 
 def create_session(username: str) -> str:
@@ -79,13 +80,30 @@ def create_session(username: str) -> str:
     import secrets
     token = secrets.token_urlsafe(32)
     sessions[token] = {"username": username, "created_at": datetime.now()}
+    # Clean up old sessions
+    cleanup_sessions()
     return token
+
+
+def cleanup_sessions():
+    """Remove expired sessions"""
+    from datetime import timedelta
+    expiry_time = datetime.now() - timedelta(hours=SESSION_EXPIRY_HOURS)
+    expired = [token for token, data in sessions.items() if data["created_at"] < expiry_time]
+    for token in expired:
+        del sessions[token]
 
 
 def verify_session(request: Request) -> bool:
     """Verify session from cookie"""
     session_token = request.cookies.get("session_token")
     if not session_token or session_token not in sessions:
+        return False
+    # Check if session is expired
+    session_data = sessions[session_token]
+    from datetime import timedelta
+    if datetime.now() - session_data["created_at"] > timedelta(hours=SESSION_EXPIRY_HOURS):
+        del sessions[session_token]
         return False
     return True
 
@@ -279,7 +297,7 @@ async def add_static_message(request: StaticMessageRequest, _: None = Depends(re
 @app.put("/api/static-messages/{message_id}")
 async def update_static_message(message_id: int, request: StaticMessageRequest, _: None = Depends(require_auth)):
     """Update static message"""
-    await db.update_static_message(message_id, request.text, request.html_text)
+    await db.update_static_message(message_id, request.day_number, request.text, request.html_text)
     return {"status": "success", "message": "Static message updated"}
 
 

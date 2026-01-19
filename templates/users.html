@@ -277,7 +277,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     htmlInput.addEventListener('input', function() {
         if (this.value.trim()) {
-            preview.innerHTML = this.value;
+            // Sanitize and display HTML content
+            preview.innerHTML = DOMPurify ? DOMPurify.sanitize(this.value) : escapeHtml(this.value);
         } else if (textInput.value.trim()) {
             preview.textContent = textInput.value;
         } else {
@@ -294,6 +295,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 async function sendMessage() {
     const userIds = getSelectedUserIds();

@@ -108,16 +108,16 @@
 document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
     
-    // Prepare events from scheduled messages
-    var events = [
-        {% for msg in messages %}
-        {
-            title: '{{ "✓ " if msg.is_sent else "📧 " }}{{ msg.text[:30]|replace("'", "\\'") }}...',
-            start: '{{ msg.scheduled_time }}',
-            color: '{{ "#28a745" if msg.is_sent else "#0d6efd" }}'
-        },
-        {% endfor %}
-    ];
+    // Prepare events from scheduled messages (data embedded safely)
+    var messagesData = {{ messages | tojson | safe }};
+    var events = messagesData.map(function(msg) {
+        var title = (msg.is_sent ? '✓ ' : '📧 ') + msg.text.substring(0, 30) + '...';
+        return {
+            title: title,
+            start: msg.scheduled_time,
+            color: msg.is_sent ? '#28a745' : '#0d6efd'
+        };
+    });
     
     var calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',

@@ -50,7 +50,7 @@
                         </td>
                         <td>{{ msg.created_at[:10] }}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editMessage({{ msg.id }}, {{ msg.day_number }}, '{{ msg.text|replace("'", "\\'") }}', '{{ msg.html_text|replace("'", "\\'") if msg.html_text else "" }}')">
+                            <button class="btn btn-sm btn-warning" onclick="editMessage({{ msg.id }}, {{ msg.day_number }}, this.dataset.text, this.dataset.html)" data-text="{{ msg.text }}" data-html="{{ msg.html_text or '' }}">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <button class="btn btn-sm btn-info" onclick="toggleMessage({{ msg.id }})">

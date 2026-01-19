@@ -273,12 +273,12 @@ class Database:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
     
-    async def update_static_message(self, message_id: int, text: str, html_text: str):
+    async def update_static_message(self, message_id: int, day_number: int, text: str, html_text: str):
         """Update static message"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                UPDATE static_messages SET text = ?, html_text = ? WHERE id = ?
-            """, (text, html_text, message_id))
+                UPDATE static_messages SET day_number = ?, text = ?, html_text = ? WHERE id = ?
+            """, (day_number, text, html_text, message_id))
             await db.commit()
     
     async def delete_static_message(self, message_id: int):
