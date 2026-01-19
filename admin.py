@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,7 +10,6 @@ from typing import Optional, List
 from dotenv import load_dotenv
 from database import Database
 import asyncio
-from bot import bot, send_message_to_users
 
 # Load environment variables
 load_dotenv()
@@ -19,9 +19,19 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 
-# Initialize FastAPI app
-app = FastAPI(title="Inviter Bot Admin Panel")
+# Database instance
 db = Database(DATABASE_PATH)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup"""
+    await db.init_db()
+    yield
+
+
+# Initialize FastAPI app
+app = FastAPI(title="Inviter Bot Admin Panel", lifespan=lifespan)
 
 # Templates
 templates = Jinja2Templates(directory="templates")
@@ -87,12 +97,6 @@ async def require_auth(request: Request):
 
 
 # Routes
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup"""
-    await db.init_db()
-
-
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Root redirect to login or dashboard"""
@@ -221,17 +225,34 @@ async def delete_users(user_ids: List[int], _: None = Depends(require_auth)):
 @app.post("/api/users/send-message")
 async def send_message(request: MessageRequest, _: None = Depends(require_auth)):
     """Send message to selected users"""
-    text = request.html_text if request.html_text else request.text
-    parse_mode = "HTML" if request.html_text else None
-    
-    success, fail = await send_message_to_users(request.user_ids, text, parse_mode)
-    
-    return {
-        "status": "success",
-        "message": f"Sent to {success} users, failed for {fail} users",
-        "success_count": success,
-        "fail_count": fail
-    }
+    try:
+        # Import bot only when needed
+        from bot import bot, init_bot
+        init_bot()
+        
+        text = request.html_text if request.html_text else request.text
+        parse_mode = "HTML" if request.html_text else None
+        
+        success_count = 0
+        fail_count = 0
+        
+        for user_id in request.user_ids:
+            try:
+                await bot.send_message(user_id, text, parse_mode=parse_mode)
+                success_count += 1
+                await db.log_action(user_id, "received_message", "Message sent via admin panel")
+                await asyncio.sleep(0.05)  # Rate limiting
+            except Exception as e:
+                fail_count += 1
+        
+        return {
+            "status": "success",
+            "message": f"Sent to {success_count} users, failed for {fail_count} users",
+            "success_count": success_count,
+            "fail_count": fail_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/schedule/add")

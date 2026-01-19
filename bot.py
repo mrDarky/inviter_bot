@@ -21,12 +21,20 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 
 # Initialize bot and dispatcher
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+bot = None
+dp = None
 db = Database(DATABASE_PATH)
 
 # Scheduler for scheduled messages
 scheduler = AsyncIOScheduler()
+
+
+def init_bot():
+    """Initialize bot and dispatcher"""
+    global bot, dp
+    if bot is None:
+        bot = Bot(token=BOT_TOKEN)
+        dp = Dispatcher()
 
 
 @dp.message(Command("start"))
@@ -166,6 +174,9 @@ async def send_static_messages():
 
 async def main():
     """Main function"""
+    # Initialize bot
+    init_bot()
+    
     # Initialize database
     await db.init_db()
     logger.info("Database initialized")
