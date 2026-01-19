@@ -277,8 +277,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     htmlInput.addEventListener('input', function() {
         if (this.value.trim()) {
-            // Sanitize and display HTML content
-            preview.innerHTML = DOMPurify ? DOMPurify.sanitize(this.value) : escapeHtml(this.value);
+            // Always escape HTML to prevent XSS
+            preview.innerHTML = escapeHtml(this.value);
         } else if (textInput.value.trim()) {
             preview.textContent = textInput.value;
         } else {

@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
     
     // Prepare events from scheduled messages (data embedded safely)
-    var messagesData = {{ messages | tojson | safe }};
+    var messagesData = {{ messages | tojson }};
     var events = messagesData.map(function(msg) {
         var title = (msg.is_sent ? '✓ ' : '📧 ') + msg.text.substring(0, 30) + '...';
         return {
