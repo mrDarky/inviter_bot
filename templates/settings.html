@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-gear"></i> Settings</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Bot Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="mb-3">
+                        <label class="form-label">Welcome Message</label>
+                        <textarea class="form-control" name="welcome_message" rows="3">{{ settings.welcome_message or 'Welcome to our channel!' }}</textarea>
+                        <small class="text-muted">Message sent when users join a channel</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Bot Name</label>
+                        <input type="text" class="form-control" name="bot_name" value="{{ settings.bot_name or 'Inviter Bot' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Daily Message Time</label>
+                        <input type="time" class="form-control" name="daily_message_time" value="{{ settings.daily_message_time or '09:00' }}">
+                        <small class="text-muted">Time to send daily static messages (24-hour format)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Max Messages Per Day</label>
+                        <input type="number" class="form-control" name="max_messages_per_day" value="{{ settings.max_messages_per_day or '10' }}" min="1">
+                        <small class="text-muted">Maximum number of messages that can be sent per day to prevent spam</small>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="auto_ban_left_users" id="autoBan" {{ 'checked' if settings.auto_ban_left_users == 'true' else '' }}>
+                        <label class="form-check-label" for="autoBan">
+                            Auto-ban users who leave channels
+                        </label>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="enable_welcome_message" id="enableWelcome" {{ 'checked' if settings.enable_welcome_message == 'true' or not settings.enable_welcome_message else '' }}>
+                        <label class="form-check-label" for="enableWelcome">
+                            Enable welcome messages
+                        </label>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="enable_static_messages" id="enableStatic" {{ 'checked' if settings.enable_static_messages == 'true' or not settings.enable_static_messages else '' }}>
+                        <label class="form-check-label" for="enableStatic">
+                            Enable static messages
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Version:</strong> 1.0.0</p>
+                <p><strong>Environment:</strong> Production</p>
+                <p><strong>Database:</strong> SQLite</p>
+                <hr>
+                <p class="mb-0"><small class="text-muted">Inviter Bot Admin Panel</small></p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">Danger Zone</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">These actions are irreversible</p>
+                <button class="btn btn-outline-danger w-100 mb-2" onclick="clearStatistics()">
+                    <i class="bi bi-trash"></i> Clear Statistics
+                </button>
+                <button class="btn btn-outline-danger w-100" onclick="exportData()">
+                    <i class="bi bi-download"></i> Export Data
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const settings = {};
+    
+    for (let [key, value] of formData.entries()) {
+        settings[key] = value;
+    }
+    
+    // Handle checkboxes
+    settings.auto_ban_left_users = document.getElementById('autoBan').checked ? 'true' : 'false';
+    settings.enable_welcome_message = document.getElementById('enableWelcome').checked ? 'true' : 'false';
+    settings.enable_static_messages = document.getElementById('enableStatic').checked ? 'true' : 'false';
+    
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(settings)
+        });
+        const data = await response.json();
+        alert(data.message);
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+});
+
+function clearStatistics() {
+    if (!confirm('This will clear all statistics data. Are you sure?')) return;
+    alert('This feature is not yet implemented');
+}
+
+function exportData() {
+    alert('This feature is not yet implemented');
+}
+</script>
+{% endblock %}

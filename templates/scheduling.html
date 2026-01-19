@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Scheduling - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css' rel='stylesheet' />
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-calendar-event"></i> Message Scheduling</h2>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+        <i class="bi bi-plus-circle"></i> Add Scheduled Message
+    </button>
+</div>
+
+<!-- Calendar -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div id="calendar"></div>
+    </div>
+</div>
+
+<!-- Scheduled Messages List -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-list"></i> Scheduled Messages</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Scheduled Time</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for msg in messages %}
+                    <tr>
+                        <td>{{ msg.scheduled_time }}</td>
+                        <td>
+                            <div style="max-width: 400px; overflow: hidden; text-overflow: ellipsis;">
+                                {{ msg.text[:100] }}{% if msg.text|length > 100 %}...{% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if msg.is_sent %}
+                            <span class="badge bg-success">Sent</span>
+                            {% else %}
+                            <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not msg.is_sent %}
+                            <button class="btn btn-sm btn-danger" onclick="deleteSchedule({{ msg.id }})">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Schedule Modal -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Schedule Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Scheduled Date & Time</label>
+                    <input type="datetime-local" class="form-control" id="scheduledTime" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Message Text</label>
+                    <textarea class="form-control" id="scheduleText" rows="4" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">HTML Text (Optional)</label>
+                    <textarea class="form-control" id="scheduleHtml" rows="4"></textarea>
+                    <small class="text-muted">Leave empty to send plain text</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addSchedule()">
+                    <i class="bi bi-calendar-plus"></i> Schedule Message
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js'></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    
+    // Prepare events from scheduled messages (data embedded safely)
+    var messagesData = {{ messages | tojson }};
+    var events = messagesData.map(function(msg) {
+        var title = (msg.is_sent ? '✓ ' : '📧 ') + msg.text.substring(0, 30) + '...';
+        return {
+            title: title,
+            start: msg.scheduled_time,
+            color: msg.is_sent ? '#28a745' : '#0d6efd'
+        };
+    });
+    
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        events: events,
+        height: 'auto',
+        eventClick: function(info) {
+            alert('Message: ' + info.event.title);
+        }
+    });
+    
+    calendar.render();
+});
+
+async function addSchedule() {
+    const scheduledTime = document.getElementById('scheduledTime').value;
+    const text = document.getElementById('scheduleText').value.trim();
+    const htmlText = document.getElementById('scheduleHtml').value.trim();
+    
+    if (!scheduledTime || !text) {
+        alert('Please fill in required fields');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/schedule/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                text: text,
+                html_text: htmlText,
+                scheduled_time: scheduledTime
+            })
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+
+async function deleteSchedule(messageId) {
+    if (!confirm('Delete this scheduled message?')) return;
+    
+    try {
+        const response = await fetch(`/api/schedule/${messageId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+</script>
+{% endblock %}

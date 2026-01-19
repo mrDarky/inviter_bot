@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Static Messages - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-envelope"></i> Static Messages</h2>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMessageModal">
+        <i class="bi bi-plus-circle"></i> Add Static Message
+    </button>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>Info:</strong> Static messages are automatically sent to users on specific days after they join.
+    For example, a "Day 1" message will be sent to users one day after they join the channel.
+</div>
+
+<!-- Static Messages Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Day Number</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for msg in messages %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-primary">Day {{ msg.day_number }}</span>
+                        </td>
+                        <td>
+                            <div style="max-width: 400px; overflow: hidden; text-overflow: ellipsis;">
+                                {{ msg.text[:100] }}{% if msg.text|length > 100 %}...{% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if msg.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ msg.created_at[:10] }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="editMessage({{ msg.id }}, {{ msg.day_number }}, this.dataset.text, this.dataset.html)" data-text="{{ msg.text }}" data-html="{{ msg.html_text or '' }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-info" onclick="toggleMessage({{ msg.id }})">
+                                <i class="bi bi-toggle-on"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteMessage({{ msg.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Message Modal -->
+<div class="modal fade" id="addMessageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Static Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Day Number</label>
+                    <input type="number" class="form-control" id="addDayNumber" min="0" required>
+                    <small class="text-muted">Day 0 = immediately after join, Day 1 = 1 day after, etc.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Message Text</label>
+                    <textarea class="form-control" id="addText" rows="4" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">HTML Text (Optional)</label>
+                    <textarea class="form-control" id="addHtml" rows="4"></textarea>
+                    <small class="text-muted">Leave empty to send plain text</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addMessage()">
+                    <i class="bi bi-plus-circle"></i> Add Message
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Message Modal -->
+<div class="modal fade" id="editMessageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Static Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editMessageId">
+                <div class="mb-3">
+                    <label class="form-label">Day Number</label>
+                    <input type="number" class="form-control" id="editDayNumber" min="0" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Message Text</label>
+                    <textarea class="form-control" id="editText" rows="4" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">HTML Text (Optional)</label>
+                    <textarea class="form-control" id="editHtml" rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="updateMessage()">
+                    <i class="bi bi-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function addMessage() {
+    const dayNumber = document.getElementById('addDayNumber').value;
+    const text = document.getElementById('addText').value.trim();
+    const htmlText = document.getElementById('addHtml').value.trim();
+    
+    if (!dayNumber || !text) {
+        alert('Please fill in required fields');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/static-messages/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                day_number: parseInt(dayNumber),
+                text: text,
+                html_text: htmlText
+            })
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+
+function editMessage(id, dayNumber, text, htmlText) {
+    document.getElementById('editMessageId').value = id;
+    document.getElementById('editDayNumber').value = dayNumber;
+    document.getElementById('editText').value = text;
+    document.getElementById('editHtml').value = htmlText;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editMessageModal'));
+    modal.show();
+}
+
+async function updateMessage() {
+    const id = document.getElementById('editMessageId').value;
+    const dayNumber = document.getElementById('editDayNumber').value;
+    const text = document.getElementById('editText').value.trim();
+    const htmlText = document.getElementById('editHtml').value.trim();
+    
+    if (!text) {
+        alert('Please enter message text');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/static-messages/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                day_number: parseInt(dayNumber),
+                text: text,
+                html_text: htmlText
+            })
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+
+async function toggleMessage(id) {
+    try {
+        const response = await fetch(`/api/static-messages/${id}/toggle`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+
+async function deleteMessage(id) {
+    if (!confirm('Delete this static message?')) return;
+    
+    try {
+        const response = await fetch(`/api/static-messages/${id}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+}
+</script>
+{% endblock %}
