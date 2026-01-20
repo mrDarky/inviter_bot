@@ -2,7 +2,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Form, HTTPException, Depends
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -107,6 +107,9 @@ class StaticMessageRequest(BaseModel):
     day_number: int
     text: str
     html_text: Optional[str] = None
+    media_type: Optional[str] = 'text'
+    media_file_id: Optional[str] = None
+    buttons_config: Optional[str] = None
 
 
 class SettingRequest(BaseModel):
@@ -396,14 +399,29 @@ async def delete_scheduled_message(message_id: int, _: None = Depends(require_au
 @app.post("/api/static-messages/add")
 async def add_static_message(request: StaticMessageRequest, _: None = Depends(require_auth)):
     """Add static message"""
-    await db.add_static_message(request.day_number, request.text, request.html_text)
+    await db.add_static_message(
+        request.day_number, 
+        request.text, 
+        request.html_text, 
+        request.media_type, 
+        request.media_file_id, 
+        request.buttons_config
+    )
     return {"status": "success", "message": "Static message added"}
 
 
 @app.put("/api/static-messages/{message_id}")
 async def update_static_message(message_id: int, request: StaticMessageRequest, _: None = Depends(require_auth)):
     """Update static message"""
-    await db.update_static_message(message_id, request.day_number, request.text, request.html_text)
+    await db.update_static_message(
+        message_id, 
+        request.day_number, 
+        request.text, 
+        request.html_text, 
+        request.media_type, 
+        request.media_file_id, 
+        request.buttons_config
+    )
     return {"status": "success", "message": "Static message updated"}
 
 
@@ -419,6 +437,83 @@ async def toggle_static_message(message_id: int, _: None = Depends(require_auth)
     """Toggle static message active status"""
     await db.toggle_static_message(message_id)
     return {"status": "success", "message": "Static message toggled"}
+
+
+@app.post("/api/static-messages/upload-media")
+async def upload_media(
+    file: UploadFile = File(...),
+    media_type: str = Form(...),
+    _: None = Depends(require_auth)
+):
+    """Upload media file to Telegram and return file_id"""
+    try:
+        from aiogram import Bot
+        from aiogram.types import FSInputFile, BufferedInputFile
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Create a buffered input file
+        input_file = BufferedInputFile(file_content, filename=file.filename)
+        
+        # Get admin user ID to send the file to (for storage)
+        # We'll use a dummy chat - in production, you might want a specific storage chat
+        admin_chat_id = os.getenv('ADMIN_CHAT_ID')
+        if not admin_chat_id:
+            # If no admin chat is configured, we can't upload
+            raise HTTPException(
+                status_code=400, 
+                detail="ADMIN_CHAT_ID not configured. Please add your Telegram user ID to .env"
+            )
+        
+        # Send file to get file_id
+        file_id = None
+        if media_type == 'photo':
+            message = await bot_instance.send_photo(admin_chat_id, input_file)
+            file_id = message.photo[-1].file_id  # Get largest photo
+        elif media_type == 'video':
+            message = await bot_instance.send_video(admin_chat_id, input_file)
+            file_id = message.video.file_id
+        elif media_type == 'video_note':
+            message = await bot_instance.send_video_note(admin_chat_id, input_file)
+            file_id = message.video_note.file_id
+        elif media_type == 'document':
+            message = await bot_instance.send_document(admin_chat_id, input_file)
+            file_id = message.document.file_id
+        elif media_type == 'animation':
+            message = await bot_instance.send_animation(admin_chat_id, input_file)
+            file_id = message.animation.file_id
+        elif media_type == 'audio':
+            message = await bot_instance.send_audio(admin_chat_id, input_file)
+            file_id = message.audio.file_id
+        elif media_type == 'voice':
+            message = await bot_instance.send_voice(admin_chat_id, input_file)
+            file_id = message.voice.file_id
+        else:
+            raise HTTPException(status_code=400, detail="Invalid media type")
+        
+        await bot_instance.session.close()
+        
+        return {
+            "status": "success",
+            "file_id": file_id,
+            "message": "File uploaded successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading media: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/settings")
