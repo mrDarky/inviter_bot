@@ -4,40 +4,153 @@ import os
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
-from aiogram.types import ChatMemberUpdated
+from aiogram.types import ChatMemberUpdated, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import json
 
 # Load environment variables
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = None
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
-
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required. Please set it in .env file.")
 
 # Initialize bot and dispatcher
 bot = None
-dp = None
+dp = Dispatcher()  # Create dispatcher at module level
 db = Database(DATABASE_PATH)
 
 # Scheduler for scheduled messages
 scheduler = AsyncIOScheduler()
 
 
+class DatabaseLogHandler(logging.Handler):
+    """Custom logging handler to save logs to database"""
+    def emit(self, record):
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.async_emit(record))
+        except Exception:
+            pass
+    
+    async def async_emit(self, record):
+        try:
+            await db.add_log(
+                level=record.levelname,
+                source="bot",
+                message=record.getMessage(),
+                details=str(record.__dict__)
+            )
+        except Exception:
+            pass
+
+
+# Add database handler to logger
+db_handler = DatabaseLogHandler()
+db_handler.setLevel(logging.INFO)
+logger.addHandler(db_handler)
+
+
+async def get_bot_token():
+    """Get bot token from DB or environment"""
+    token = await db.get_setting('bot_token')
+    if not token:
+        token = os.getenv("BOT_TOKEN")
+    if not token:
+        raise ValueError("BOT_TOKEN not found in database or environment variables")
+    return token
+
+
 def init_bot():
-    """Initialize bot and dispatcher"""
-    global bot, dp
+    """Initialize bot instance only (dispatcher already created at module level).
+    
+    Returns:
+        bool: True if bot was initialized successfully with env token,
+              False if bot token needs to be retrieved from database.
+              Caller should handle database token retrieval in async context.
+    """
+    global bot, BOT_TOKEN
     if bot is None:
+        # Try to get token from env for sync initialization
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
+        
+        if not BOT_TOKEN:
+            # If no env token, we need async context to get from DB
+            # This will be handled by the caller
+            return False
+        
         bot = Bot(token=BOT_TOKEN)
-        dp = Dispatcher()
+        return True
+    return True
+
+
+async def build_main_menu():
+    """Build main menu from database"""
+    try:
+        menu_items = await db.get_bot_menu()
+        if not menu_items:
+            return None
+        
+        buttons = []
+        for item in menu_items:
+            button = KeyboardButton(text=item['button_name'])
+            buttons.append([button])
+        
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    except Exception as e:
+        logger.error(f"Error building main menu: {e}")
+        return None
+
+
+async def handle_menu_action(message: types.Message, menu_item: dict):
+    """Handle menu item action"""
+    try:
+        if menu_item['button_type'] == 'link':
+            await message.answer(f"Open: {menu_item['action_value']}")
+        elif menu_item['button_type'] == 'text':
+            await message.answer(menu_item['action_value'])
+        elif menu_item['button_type'] == 'inline':
+            # Parse inline buttons from JSON with validation
+            try:
+                inline_buttons_data = json.loads(menu_item['inline_buttons'])
+                if not isinstance(inline_buttons_data, list):
+                    raise ValueError("inline_buttons must be a list")
+                
+                buttons = []
+                for btn_data in inline_buttons_data:
+                    if not isinstance(btn_data, dict):
+                        continue
+                    if 'text' not in btn_data or 'url' not in btn_data:
+                        continue
+                    
+                    button = InlineKeyboardButton(
+                        text=str(btn_data['text'])[:100],  # Limit text length
+                        url=str(btn_data['url'])[:500]  # Limit URL length
+                    )
+                    buttons.append([button])
+                
+                if buttons:
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                    await message.answer("Choose an option:", reply_markup=keyboard)
+                else:
+                    await message.answer("Invalid menu configuration")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Error parsing inline buttons: {e}")
+                await message.answer("Error loading menu options")
+    except Exception as e:
+        logger.error(f"Error handling menu action: {e}")
+        await message.answer("Error processing menu action")
 
 
 @dp.message(Command("start"))
@@ -55,11 +168,29 @@ async def cmd_start(message: types.Message):
     
     # Log action
     await db.log_action(user.id, "start", "User started the bot")
+    logger.info(f"User {user.id} started the bot")
+    
+    # Build main menu
+    menu = await build_main_menu()
     
     await message.answer(
         f"👋 Welcome, {user.first_name}!\n\n"
-        "I'm an inviter bot. I can help you manage channel members and send messages."
+        "I'm an inviter bot. I can help you manage channel members and send messages.",
+        reply_markup=menu
     )
+
+
+@dp.message(F.text)
+async def handle_menu_message(message: types.Message):
+    """Handle menu button clicks"""
+    try:
+        menu_items = await db.get_bot_menu()
+        for item in menu_items:
+            if item['button_name'] == message.text:
+                await handle_menu_action(message, item)
+                return
+    except Exception as e:
+        logger.error(f"Error handling menu message: {e}")
 
 
 @dp.chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
@@ -177,12 +308,24 @@ async def send_static_messages():
 
 async def main():
     """Main function"""
-    # Initialize bot
-    init_bot()
+    global bot, BOT_TOKEN
     
-    # Initialize database
+    # Initialize database first
     await db.init_db()
     logger.info("Database initialized")
+    
+    # Get bot token from DB or env
+    try:
+        BOT_TOKEN = await get_bot_token()
+        logger.info("Bot token retrieved")
+    except Exception as e:
+        logger.error(f"Failed to get bot token: {e}")
+        raise
+    
+    # Initialize bot with token
+    bot = Bot(token=BOT_TOKEN)
+    
+    # Handlers are already registered via decorators at module level
     
     # Setup scheduler
     scheduler.add_job(check_scheduled_messages, 'interval', minutes=1)

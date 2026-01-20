@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-file-text"></i> Logs</h2>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <ul class="nav nav-tabs" id="logsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="bot-all-tab" data-bs-toggle="tab" data-bs-target="#bot-all" type="button" role="tab">
+                    <i class="bi bi-robot"></i> Bot - All Logs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="bot-error-tab" data-bs-toggle="tab" data-bs-target="#bot-error" type="button" role="tab">
+                    <i class="bi bi-exclamation-triangle"></i> Bot - Errors
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="admin-all-tab" data-bs-toggle="tab" data-bs-target="#admin-all" type="button" role="tab">
+                    <i class="bi bi-shield"></i> Admin - All Logs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="admin-error-tab" data-bs-toggle="tab" data-bs-target="#admin-error" type="button" role="tab">
+                    <i class="bi bi-exclamation-circle"></i> Admin - Errors
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="logsTabContent">
+            <!-- Bot - All Logs -->
+            <div class="tab-pane fade show active" id="bot-all" role="tabpanel">
+                <div id="bot-all-logs" class="logs-container"></div>
+                <div class="text-center mt-3">
+                    <button id="bot-all-load-more" class="btn btn-outline-primary" style="display: none;">
+                        Load More
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bot - Error Logs -->
+            <div class="tab-pane fade" id="bot-error" role="tabpanel">
+                <div id="bot-error-logs" class="logs-container"></div>
+                <div class="text-center mt-3">
+                    <button id="bot-error-load-more" class="btn btn-outline-primary" style="display: none;">
+                        Load More
+                    </button>
+                </div>
+            </div>
+
+            <!-- Admin - All Logs -->
+            <div class="tab-pane fade" id="admin-all" role="tabpanel">
+                <div id="admin-all-logs" class="logs-container"></div>
+                <div class="text-center mt-3">
+                    <button id="admin-all-load-more" class="btn btn-outline-primary" style="display: none;">
+                        Load More
+                    </button>
+                </div>
+            </div>
+
+            <!-- Admin - Error Logs -->
+            <div class="tab-pane fade" id="admin-error" role="tabpanel">
+                <div id="admin-error-logs" class="logs-container"></div>
+                <div class="text-center mt-3">
+                    <button id="admin-error-load-more" class="btn btn-outline-primary" style="display: none;">
+                        Load More
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.logs-container {
+    max-height: 600px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+.log-entry {
+    padding: 8px;
+    margin-bottom: 4px;
+    border-left: 3px solid;
+    background-color: #f8f9fa;
+}
+
+.log-entry.INFO {
+    border-left-color: #0d6efd;
+}
+
+.log-entry.WARNING {
+    border-left-color: #ffc107;
+    background-color: #fff3cd;
+}
+
+.log-entry.ERROR {
+    border-left-color: #dc3545;
+    background-color: #f8d7da;
+}
+
+.log-entry.CRITICAL {
+    border-left-color: #842029;
+    background-color: #f8d7da;
+}
+
+.log-timestamp {
+    color: #6c757d;
+    font-weight: bold;
+}
+
+.log-level {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 0.75rem;
+    margin: 0 5px;
+}
+
+.log-level.INFO {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.log-level.WARNING {
+    background-color: #ffc107;
+    color: black;
+}
+
+.log-level.ERROR {
+    background-color: #dc3545;
+    color: white;
+}
+
+.log-level.CRITICAL {
+    background-color: #842029;
+    color: white;
+}
+
+.log-message {
+    margin-top: 4px;
+}
+
+.log-details {
+    margin-top: 4px;
+    padding: 4px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    color: #495057;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Log data state
+const logState = {
+    'bot-all': { offset: 0, hasMore: true, source: 'bot', level: null },
+    'bot-error': { offset: 0, hasMore: true, source: 'bot', level: 'ERROR' },
+    'admin-all': { offset: 0, hasMore: true, source: 'admin_panel', level: null },
+    'admin-error': { offset: 0, hasMore: true, source: 'admin_panel', level: 'ERROR' }
+};
+
+// Format log entry as HTML
+function formatLogEntry(log) {
+    const timestamp = new Date(log.created_at).toLocaleString();
+    let detailsHtml = '';
+    if (log.details) {
+        detailsHtml = `<div class="log-details">${escapeHtml(log.details)}</div>`;
+    }
+    
+    return `
+        <div class="log-entry ${escapeHtml(log.level)}">
+            <div>
+                <span class="log-timestamp">${timestamp}</span>
+                <span class="log-level ${escapeHtml(log.level)}">${escapeHtml(log.level)}</span>
+                <span class="badge bg-secondary">${escapeHtml(log.source)}</span>
+            </div>
+            <div class="log-message">${escapeHtml(log.message)}</div>
+            ${detailsHtml}
+        </div>
+    `;
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load logs for a specific tab
+async function loadLogs(tabId, append = false) {
+    const state = logState[tabId];
+    if (!state.hasMore && append) return;
+    
+    const container = document.getElementById(`${tabId}-logs`);
+    const loadMoreBtn = document.getElementById(`${tabId}-load-more`);
+    
+    try {
+        let url = `/api/logs?limit=1000&offset=${state.offset}`;
+        if (state.source) url += `&source=${state.source}`;
+        if (state.level) url += `&level=${state.level}`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!append) {
+            container.innerHTML = '';
+        }
+        
+        if (data.logs.length === 0) {
+            if (!append) {
+                container.innerHTML = '<div class="alert alert-info">No logs found</div>';
+            }
+            state.hasMore = false;
+            loadMoreBtn.style.display = 'none';
+            return;
+        }
+        
+        data.logs.forEach(log => {
+            container.innerHTML += formatLogEntry(log);
+        });
+        
+        state.offset += data.logs.length;
+        state.hasMore = data.has_more;
+        loadMoreBtn.style.display = data.has_more ? 'block' : 'none';
+    } catch (error) {
+        console.error('Error loading logs:', error);
+        if (!append) {
+            container.innerHTML = '<div class="alert alert-danger">Error loading logs</div>';
+        }
+    }
+}
+
+// Initialize tabs
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        const targetId = e.target.getAttribute('data-bs-target').substring(1);
+        const state = logState[targetId];
+        
+        // Load logs only if not loaded yet
+        const container = document.getElementById(`${targetId}-logs`);
+        if (container.innerHTML === '') {
+            loadLogs(targetId);
+        }
+    });
+});
+
+// Load more buttons
+document.getElementById('bot-all-load-more').addEventListener('click', () => loadLogs('bot-all', true));
+document.getElementById('bot-error-load-more').addEventListener('click', () => loadLogs('bot-error', true));
+document.getElementById('admin-all-load-more').addEventListener('click', () => loadLogs('admin-all', true));
+document.getElementById('admin-error-load-more').addEventListener('click', () => loadLogs('admin-error', true));
+
+// Load initial tab on page load
+loadLogs('bot-all');
+</script>
+{% endblock %}

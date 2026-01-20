@@ -9,10 +9,22 @@ from pydantic import BaseModel
 from typing import Optional, List
 from dotenv import load_dotenv
 from database import Database
+from passlib.context import CryptContext
 import asyncio
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Configuration
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -21,6 +33,37 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 
 # Database instance
 db = Database(DATABASE_PATH)
+
+
+class DatabaseLogHandler(logging.Handler):
+    """Custom logging handler to save logs to database"""
+    def emit(self, record):
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.async_emit(record))
+            else:
+                loop.run_until_complete(self.async_emit(record))
+        except Exception:
+            pass
+    
+    async def async_emit(self, record):
+        try:
+            await db.add_log(
+                level=record.levelname,
+                source="admin_panel",
+                message=record.getMessage(),
+                details=str(record.__dict__)
+            )
+        except Exception:
+            pass
+
+
+# Add database handler to logger
+db_handler = DatabaseLogHandler()
+db_handler.setLevel(logging.INFO)
+logger.addHandler(db_handler)
 
 
 @asynccontextmanager
@@ -132,12 +175,27 @@ async def login_page(request: Request):
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Handle login"""
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    logger.info(f"Login attempt for user: {username}")
+    
+    # First check if credentials exist in database
+    db_creds = await db.get_admin_credentials(username)
+    
+    is_valid = False
+    if db_creds:
+        # Verify against database password
+        is_valid = pwd_context.verify(password, db_creds['password_hash'])
+    else:
+        # Fallback to environment variables
+        is_valid = username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+    
+    if is_valid:
         session_token = create_session(username)
         response = RedirectResponse(url="/admin/users", status_code=303)
         response.set_cookie(key="session_token", value=session_token, httponly=True)
+        logger.info(f"Successful login for user: {username}")
         return response
     
+    logger.warning(f"Failed login attempt for user: {username}")
     return templates.TemplateResponse("login.html", {
         "request": request,
         "error": "Invalid credentials"
@@ -209,9 +267,34 @@ async def static_messages_page(request: Request):
 async def settings_page(request: Request):
     """Settings page"""
     settings = await db.get_all_settings()
+    # Get bot token from DB if exists, otherwise from env
+    bot_token = settings.get('bot_token') or os.getenv('BOT_TOKEN', '')
+    if bot_token:
+        # Mask the token for display
+        settings['bot_token_masked'] = bot_token[:10] + '...' + bot_token[-10:] if len(bot_token) > 20 else '***'
+    else:
+        settings['bot_token_masked'] = ''
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "settings": settings
+    })
+
+
+@app.get("/admin/logs", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def logs_page(request: Request):
+    """Logs page with 4 tabs"""
+    return templates.TemplateResponse("logs.html", {
+        "request": request
+    })
+
+
+@app.get("/admin/menu-constructor", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def menu_constructor_page(request: Request):
+    """Menu constructor page"""
+    menu_items = await db.get_all_bot_menu()
+    return templates.TemplateResponse("menu_constructor.html", {
+        "request": request,
+        "menu_items": menu_items
     })
 
 
@@ -244,9 +327,18 @@ async def delete_users(user_ids: List[int], _: None = Depends(require_auth)):
 async def send_message(request: MessageRequest, _: None = Depends(require_auth)):
     """Send message to selected users"""
     try:
-        # Import bot only when needed
-        from bot import bot, init_bot
-        init_bot()
+        # Import bot and get token
+        from aiogram import Bot
+        
+        # Get bot token from DB or env
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
         
         text = request.html_text if request.html_text else request.text
         parse_mode = "HTML" if request.html_text else None
@@ -256,12 +348,14 @@ async def send_message(request: MessageRequest, _: None = Depends(require_auth))
         
         for user_id in request.user_ids:
             try:
-                await bot.send_message(user_id, text, parse_mode=parse_mode)
+                await bot_instance.send_message(user_id, text, parse_mode=parse_mode)
                 success_count += 1
                 await db.log_action(user_id, "received_message", "Message sent via admin panel")
                 await asyncio.sleep(0.05)  # Rate limiting
             except Exception as e:
                 fail_count += 1
+        
+        await bot_instance.session.close()
         
         return {
             "status": "success",
@@ -269,7 +363,10 @@ async def send_message(request: MessageRequest, _: None = Depends(require_auth))
             "success_count": success_count,
             "fail_count": fail_count
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -318,9 +415,130 @@ async def toggle_static_message(message_id: int, _: None = Depends(require_auth)
 @app.post("/api/settings")
 async def save_settings(settings: dict, _: None = Depends(require_auth)):
     """Save settings"""
+    logger.info(f"Updating settings: {list(settings.keys())}")
     for key, value in settings.items():
         await db.set_setting(key, value)
     return {"status": "success", "message": "Settings saved"}
+
+
+@app.post("/api/settings/change-password")
+async def change_password(
+    old_password: str = Form(...),
+    new_password: str = Form(...),
+    _: None = Depends(require_auth)
+):
+    """Change admin password"""
+    username = ADMIN_USERNAME
+    logger.info(f"Password change request for user: {username}")
+    
+    # Verify old password
+    db_creds = await db.get_admin_credentials(username)
+    
+    is_valid = False
+    if db_creds:
+        is_valid = pwd_context.verify(old_password, db_creds['password_hash'])
+    else:
+        # If no DB creds, check against env password
+        is_valid = old_password == ADMIN_PASSWORD
+    
+    if not is_valid:
+        logger.warning(f"Invalid old password provided for user: {username}")
+        raise HTTPException(status_code=400, detail="Invalid old password")
+    
+    # Hash and store new password
+    password_hash = pwd_context.hash(new_password)
+    await db.update_admin_password(username, password_hash)
+    logger.info(f"Password successfully changed for user: {username}")
+    
+    return {"status": "success", "message": "Password changed successfully"}
+
+
+@app.post("/api/settings/bot-token")
+async def update_bot_token(bot_token: str = Form(...), _: None = Depends(require_auth)):
+    """Update bot token"""
+    logger.info("Updating bot token")
+    await db.set_setting('bot_token', bot_token)
+    return {"status": "success", "message": "Bot token updated successfully"}
+
+
+# Logs API endpoints
+@app.get("/api/logs")
+async def get_logs(
+    source: str = None,
+    level: str = None,
+    offset: int = 0,
+    limit: int = 1000,
+    _: None = Depends(require_auth)
+):
+    """Get logs with filters"""
+    logs = await db.get_logs(source=source, level=level, limit=limit, offset=offset)
+    total = await db.get_logs_count(source=source, level=level)
+    return {
+        "logs": logs,
+        "total": total,
+        "has_more": offset + limit < total
+    }
+
+
+# Menu constructor API endpoints
+class MenuItemRequest(BaseModel):
+    button_name: str
+    button_order: int
+    button_type: str
+    action_value: Optional[str] = None
+    inline_buttons: Optional[str] = None
+
+
+@app.get("/api/menu")
+async def get_menu(_: None = Depends(require_auth)):
+    """Get all menu items"""
+    menu_items = await db.get_all_bot_menu()
+    return {"menu_items": menu_items}
+
+
+@app.post("/api/menu")
+async def add_menu_item(request: MenuItemRequest, _: None = Depends(require_auth)):
+    """Add menu item"""
+    logger.info(f"Adding menu item: {request.button_name}")
+    await db.add_bot_menu_item(
+        request.button_name,
+        request.button_order,
+        request.button_type,
+        request.action_value,
+        request.inline_buttons
+    )
+    return {"status": "success", "message": "Menu item added"}
+
+
+@app.put("/api/menu/{menu_id}")
+async def update_menu_item(menu_id: int, request: MenuItemRequest, _: None = Depends(require_auth)):
+    """Update menu item"""
+    logger.info(f"Updating menu item: {menu_id}")
+    await db.update_bot_menu_item(
+        menu_id,
+        request.button_name,
+        request.button_order,
+        request.button_type,
+        request.action_value,
+        request.inline_buttons
+    )
+    return {"status": "success", "message": "Menu item updated"}
+
+
+@app.delete("/api/menu/{menu_id}")
+async def delete_menu_item(menu_id: int, _: None = Depends(require_auth)):
+    """Delete menu item"""
+    logger.info(f"Deleting menu item: {menu_id}")
+    await db.delete_bot_menu_item(menu_id)
+    return {"status": "success", "message": "Menu item deleted"}
+
+
+@app.post("/api/menu/{menu_id}/toggle")
+async def toggle_menu_item(menu_id: int, _: None = Depends(require_auth)):
+    """Toggle menu item active status"""
+    logger.info(f"Toggling menu item: {menu_id}")
+    await db.toggle_bot_menu_item(menu_id)
+    return {"status": "success", "message": "Menu item toggled"}
 
 
 if __name__ == "__main__":

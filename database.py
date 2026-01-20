@@ -80,6 +80,42 @@ class Database:
                 )
             """)
             
+            # Logs table for both bot and admin panel
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    details TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Admin credentials table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS admin_credentials (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Bot menu structure table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS bot_menu (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    button_name TEXT NOT NULL,
+                    button_order INTEGER NOT NULL,
+                    button_type TEXT NOT NULL,
+                    action_value TEXT,
+                    inline_buttons TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             await db.commit()
     
     # User operations
@@ -321,3 +357,131 @@ class Database:
             async with db.execute("SELECT * FROM settings") as cursor:
                 rows = await cursor.fetchall()
                 return {row['key']: row['value'] for row in rows}
+    
+    # Logs operations
+    async def add_log(self, level: str, source: str, message: str, details: str = None):
+        """Add log entry"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO logs (level, source, message, details)
+                VALUES (?, ?, ?, ?)
+            """, (level, source, message, details))
+            await db.commit()
+    
+    async def get_logs(self, source: str = None, level: str = None, limit: int = 1000, offset: int = 0):
+        """Get logs with optional filters"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT * FROM logs WHERE 1=1"
+            params = []
+            
+            if source:
+                query += " AND source = ?"
+                params.append(source)
+            
+            if level:
+                query += " AND level = ?"
+                params.append(level)
+            
+            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_logs_count(self, source: str = None, level: str = None):
+        """Get total logs count with optional filters"""
+        async with aiosqlite.connect(self.db_path) as db:
+            query = "SELECT COUNT(*) FROM logs WHERE 1=1"
+            params = []
+            
+            if source:
+                query += " AND source = ?"
+                params.append(source)
+            
+            if level:
+                query += " AND level = ?"
+                params.append(level)
+            
+            async with db.execute(query, params) as cursor:
+                result = await cursor.fetchone()
+                return result[0]
+    
+    # Admin credentials operations
+    async def get_admin_credentials(self, username: str):
+        """Get admin credentials"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM admin_credentials WHERE username = ?", (username,)) as cursor:
+                result = await cursor.fetchone()
+                return dict(result) if result else None
+    
+    async def update_admin_password(self, username: str, password_hash: str):
+        """Update admin password"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO admin_credentials (username, password_hash)
+                VALUES (?, ?)
+                ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash, updated_at = CURRENT_TIMESTAMP
+            """, (username, password_hash))
+            await db.commit()
+    
+    # Bot menu operations
+    async def get_bot_menu(self):
+        """Get all bot menu items"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM bot_menu 
+                WHERE is_active = 1
+                ORDER BY button_order ASC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_all_bot_menu(self):
+        """Get all bot menu items including inactive"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM bot_menu 
+                ORDER BY button_order ASC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def add_bot_menu_item(self, button_name: str, button_order: int, button_type: str, action_value: str = None, inline_buttons: str = None):
+        """Add bot menu item"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO bot_menu (button_name, button_order, button_type, action_value, inline_buttons)
+                VALUES (?, ?, ?, ?, ?)
+            """, (button_name, button_order, button_type, action_value, inline_buttons))
+            await db.commit()
+    
+    async def update_bot_menu_item(self, menu_id: int, button_name: str, button_order: int, button_type: str, action_value: str = None, inline_buttons: str = None):
+        """Update bot menu item"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE bot_menu 
+                SET button_name = ?, button_order = ?, button_type = ?, action_value = ?, inline_buttons = ?
+                WHERE id = ?
+            """, (button_name, button_order, button_type, action_value, inline_buttons, menu_id))
+            await db.commit()
+    
+    async def delete_bot_menu_item(self, menu_id: int):
+        """Delete bot menu item"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM bot_menu WHERE id = ?", (menu_id,))
+            await db.commit()
+    
+    async def toggle_bot_menu_item(self, menu_id: int):
+        """Toggle bot menu item active status"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE bot_menu 
+                SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+                WHERE id = ?
+            """, (menu_id,))
+            await db.commit()
