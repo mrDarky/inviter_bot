@@ -119,7 +119,7 @@ SESSION_EXPIRY_HOURS = 24
 
 
 def create_session(username: str) -> str:
-    """Create a session token - caller must store it in database before use"""
+    """Generate a secure session token. Token must be stored in database separately."""
     token = secrets.token_urlsafe(32)
     return token
 
