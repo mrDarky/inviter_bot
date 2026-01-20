@@ -226,13 +226,13 @@ async function submitAddMenuItem() {
         const data = await response.json();
         
         if (response.ok) {
-            alert(data.message);
-            location.reload();
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -244,7 +244,7 @@ async function editMenuItem(menuId) {
         const item = data.menu_items.find(i => i.id === menuId);
         
         if (!item) {
-            alert('Menu item not found');
+            showNotification('Menu item not found', 'error');
             return;
         }
         
@@ -271,7 +271,7 @@ async function editMenuItem(menuId) {
         
         new bootstrap.Modal(document.getElementById('editMenuItemModal')).show();
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -310,13 +310,13 @@ async function submitEditMenuItem() {
         const data = await response.json();
         
         if (response.ok) {
-            alert(data.message);
-            location.reload();
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -329,12 +329,13 @@ async function toggleMenuItem(menuId) {
         const data = await response.json();
         
         if (response.ok) {
-            location.reload();
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -349,13 +350,13 @@ async function deleteMenuItem(menuId) {
         const data = await response.json();
         
         if (response.ok) {
-            alert(data.message);
-            location.reload();
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 </script>

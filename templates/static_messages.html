@@ -168,8 +168,8 @@
                         
                         <div class="mb-3">
                             <label class="form-label">Message Text</label>
-                            <textarea class="form-control" id="addText" rows="4" required></textarea>
-                            <small class="text-muted">Plain text for fallback</small>
+                            <textarea class="form-control" id="addText" rows="4"></textarea>
+                            <small class="text-muted">Plain text for fallback (optional if HTML text is provided)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -264,7 +264,8 @@
                         
                         <div class="mb-3">
                             <label class="form-label">Message Text</label>
-                            <textarea class="form-control" id="editText" rows="4" required></textarea>
+                            <textarea class="form-control" id="editText" rows="4"></textarea>
+                            <small class="text-muted">Plain text for fallback (optional if HTML text is provided)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -423,13 +424,18 @@ async function addMessage() {
     const sendTime = document.getElementById('addSendTime').value;
     const additionalMinutes = document.getElementById('addAdditionalMinutes').value || 0;
     
-    if (!dayNumber || !text) {
-        alert('Please fill in required fields');
+    if (!dayNumber) {
+        showNotification('Please enter day number', 'error');
+        return;
+    }
+    
+    if (!text && !htmlText) {
+        showNotification('Please enter either message text or HTML text', 'error');
         return;
     }
     
     if (mediaType !== 'text' && !mediaFileId) {
-        alert('Please upload a media file or change media type to "Text Only"');
+        showNotification('Please upload a media file or change media type to "Text Only"', 'error');
         return;
     }
     
@@ -439,7 +445,7 @@ async function addMessage() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 day_number: parseInt(dayNumber),
-                text: text,
+                text: text || htmlText,
                 html_text: htmlText,
                 media_type: mediaType,
                 media_file_id: mediaFileId,
@@ -449,10 +455,10 @@ async function addMessage() {
             })
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -486,13 +492,13 @@ async function updateMessage() {
     const sendTime = document.getElementById('editSendTime').value;
     const additionalMinutes = document.getElementById('editAdditionalMinutes').value || 0;
     
-    if (!text) {
-        alert('Please enter message text');
+    if (!text && !htmlText) {
+        showNotification('Please enter either message text or HTML text', 'error');
         return;
     }
     
     if (mediaType !== 'text' && !mediaFileId) {
-        alert('Please upload a media file or change media type to "Text Only"');
+        showNotification('Please upload a media file or change media type to "Text Only"', 'error');
         return;
     }
     
@@ -502,7 +508,7 @@ async function updateMessage() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 day_number: parseInt(dayNumber),
-                text: text,
+                text: text || htmlText,
                 html_text: htmlText,
                 media_type: mediaType,
                 media_file_id: mediaFileId,
@@ -512,10 +518,10 @@ async function updateMessage() {
             })
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -525,10 +531,10 @@ async function toggleMessage(id) {
             method: 'POST'
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -540,10 +546,10 @@ async function deleteMessage(id) {
             method: 'DELETE'
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 </script>

@@ -174,8 +174,7 @@ async def cmd_start(message: types.Message):
     menu = await build_main_menu()
     
     await message.answer(
-        f"👋 Welcome, {user.first_name}!\n\n"
-        "I'm an inviter bot. I can help you manage channel members and send messages.",
+        "Use the menu below to interact with the bot.",
         reply_markup=menu
     )
 
@@ -210,16 +209,6 @@ async def on_user_join(event: ChatMemberUpdated):
     await db.log_action(user.id, "join_channel", f"Joined channel: {event.chat.title}")
     
     logger.info(f"User {user.id} ({user.username}) joined channel {event.chat.title}")
-    
-    # Send welcome message to user if possible
-    try:
-        await bot.send_message(
-            user.id,
-            f"👋 Welcome to {event.chat.title}!\n\n"
-            "Thank you for joining!"
-        )
-    except Exception as e:
-        logger.warning(f"Could not send welcome message to user {user.id}: {e}")
 
 
 @dp.chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))

@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
         events: events,
         height: 'auto',
         eventClick: function(info) {
-            alert('Message: ' + info.event.title);
+            showNotification('Message: ' + info.event.title, 'info');
         }
     });
     
@@ -142,7 +142,7 @@ async function addSchedule() {
     const htmlText = document.getElementById('scheduleHtml').value.trim();
     
     if (!scheduledTime || !text) {
-        alert('Please fill in required fields');
+        showNotification('Please fill in required fields', 'error');
         return;
     }
     
@@ -157,10 +157,10 @@ async function addSchedule() {
             })
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -172,10 +172,10 @@ async function deleteSchedule(messageId) {
             method: 'DELETE'
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 </script>

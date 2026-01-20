@@ -161,7 +161,7 @@ document.getElementById('botTokenForm').addEventListener('submit', async functio
     const botToken = formData.get('bot_token');
     
     if (!botToken) {
-        alert('Please enter a bot token');
+        showNotification('Please enter a bot token', 'error');
         return;
     }
     
@@ -173,13 +173,13 @@ document.getElementById('botTokenForm').addEventListener('submit', async functio
         const data = await response.json();
         
         if (response.ok) {
-            alert(data.message);
-            location.reload();
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 });
 
@@ -192,7 +192,7 @@ document.getElementById('passwordForm').addEventListener('submit', async functio
     const confirmPassword = document.getElementById('confirmPassword').value;
     
     if (newPassword !== confirmPassword) {
-        alert('New passwords do not match');
+        showNotification('New passwords do not match', 'error');
         return;
     }
     
@@ -204,13 +204,13 @@ document.getElementById('passwordForm').addEventListener('submit', async functio
         const data = await response.json();
         
         if (response.ok) {
-            alert(data.message);
+            showNotification(data.message, 'success');
             e.target.reset();
         } else {
-            alert('Error: ' + (data.detail || data.message));
+            showNotification('Error: ' + (data.detail || data.message), 'error');
         }
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 });
 
@@ -237,19 +237,19 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
             body: JSON.stringify(settings)
         });
         const data = await response.json();
-        alert(data.message);
+        showNotification(data.message, 'success');
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 });
 
 function clearStatistics() {
     if (!confirm('This will clear all statistics data. Are you sure?')) return;
-    alert('This feature is not yet implemented');
+    showNotification('This feature is not yet implemented', 'info');
 }
 
 function exportData() {
-    alert('This feature is not yet implemented');
+    showNotification('This feature is not yet implemented', 'info');
 }
 </script>
 {% endblock %}
