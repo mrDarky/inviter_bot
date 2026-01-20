@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -113,47 +114,50 @@ class SettingRequest(BaseModel):
     value: str
 
 
-# Simple session management
-sessions = {}
+# Session management - persistent storage in database
 SESSION_EXPIRY_HOURS = 24
 
 
 def create_session(username: str) -> str:
-    """Create a session token"""
-    import secrets
+    """Generate a secure session token. Token must be stored in database separately."""
     token = secrets.token_urlsafe(32)
-    sessions[token] = {"username": username, "created_at": datetime.now()}
-    # Clean up old sessions
-    cleanup_sessions()
     return token
 
 
-def cleanup_sessions():
+async def cleanup_sessions():
     """Remove expired sessions"""
-    from datetime import timedelta
-    expiry_time = datetime.now() - timedelta(hours=SESSION_EXPIRY_HOURS)
-    expired = [token for token, data in sessions.items() if data["created_at"] < expiry_time]
-    for token in expired:
-        del sessions[token]
+    await db.cleanup_expired_sessions(SESSION_EXPIRY_HOURS)
 
 
-def verify_session(request: Request) -> bool:
+async def verify_session(request: Request) -> bool:
     """Verify session from cookie"""
     session_token = request.cookies.get("session_token")
-    if not session_token or session_token not in sessions:
+    if not session_token:
         return False
+    
+    # Get session from database
+    session_data = await db.get_session(session_token)
+    if not session_data:
+        return False
+    
     # Check if session is expired
-    session_data = sessions[session_token]
-    from datetime import timedelta
-    if datetime.now() - session_data["created_at"] > timedelta(hours=SESSION_EXPIRY_HOURS):
-        del sessions[session_token]
+    try:
+        # SQLite CURRENT_TIMESTAMP format is compatible with ISO format
+        created_at = datetime.fromisoformat(session_data["created_at"])
+    except (ValueError, KeyError):
+        # If parsing fails, consider session invalid
+        await db.delete_session(session_token)
+        return False
+    
+    if datetime.now() - created_at > timedelta(hours=SESSION_EXPIRY_HOURS):
+        await db.delete_session(session_token)
         return False
     return True
 
 
 async def require_auth(request: Request):
     """Dependency to require authentication"""
-    if not verify_session(request):
+    if not await verify_session(request):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
 
@@ -161,7 +165,7 @@ async def require_auth(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Root redirect to login or dashboard"""
-    if verify_session(request):
+    if await verify_session(request):
         return RedirectResponse(url="/admin/users")
     return RedirectResponse(url="/login")
 
@@ -190,6 +194,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
     
     if is_valid:
         session_token = create_session(username)
+        # Store session in database
+        await db.create_session(session_token, username)
+        # Clean up old sessions
+        await cleanup_sessions()
+        
         response = RedirectResponse(url="/admin/users", status_code=303)
         response.set_cookie(key="session_token", value=session_token, httponly=True)
         logger.info(f"Successful login for user: {username}")
@@ -206,8 +215,8 @@ async def login(request: Request, username: str = Form(...), password: str = For
 async def logout(request: Request):
     """Handle logout"""
     session_token = request.cookies.get("session_token")
-    if session_token in sessions:
-        del sessions[session_token]
+    if session_token:
+        await db.delete_session(session_token)
     response = RedirectResponse(url="/login")
     response.delete_cookie("session_token")
     return response
