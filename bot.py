@@ -73,14 +73,14 @@ async def get_bot_token():
 
 
 def init_bot():
-    """Initialize bot and dispatcher.
+    """Initialize bot instance only (dispatcher already created at module level).
     
     Returns:
         bool: True if bot was initialized successfully with env token,
               False if bot token needs to be retrieved from database.
               Caller should handle database token retrieval in async context.
     """
-    global bot, dp, BOT_TOKEN
+    global bot, BOT_TOKEN
     if bot is None:
         # Try to get token from env for sync initialization
         BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -91,7 +91,6 @@ def init_bot():
             return False
         
         bot = Bot(token=BOT_TOKEN)
-        dp = Dispatcher()
         return True
     return True
 
@@ -122,18 +121,33 @@ async def handle_menu_action(message: types.Message, menu_item: dict):
         elif menu_item['button_type'] == 'text':
             await message.answer(menu_item['action_value'])
         elif menu_item['button_type'] == 'inline':
-            # Parse inline buttons from JSON
-            inline_buttons_data = json.loads(menu_item['inline_buttons'])
-            buttons = []
-            for btn_data in inline_buttons_data:
-                button = InlineKeyboardButton(
-                    text=btn_data.get('text', 'Button'),
-                    url=btn_data.get('url')
-                )
-                buttons.append([button])
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-            await message.answer("Choose an option:", reply_markup=keyboard)
+            # Parse inline buttons from JSON with validation
+            try:
+                inline_buttons_data = json.loads(menu_item['inline_buttons'])
+                if not isinstance(inline_buttons_data, list):
+                    raise ValueError("inline_buttons must be a list")
+                
+                buttons = []
+                for btn_data in inline_buttons_data:
+                    if not isinstance(btn_data, dict):
+                        continue
+                    if 'text' not in btn_data or 'url' not in btn_data:
+                        continue
+                    
+                    button = InlineKeyboardButton(
+                        text=str(btn_data['text'])[:100],  # Limit text length
+                        url=str(btn_data['url'])[:500]  # Limit URL length
+                    )
+                    buttons.append([button])
+                
+                if buttons:
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                    await message.answer("Choose an option:", reply_markup=keyboard)
+                else:
+                    await message.answer("Invalid menu configuration")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Error parsing inline buttons: {e}")
+                await message.answer("Error loading menu options")
     except Exception as e:
         logger.error(f"Error handling menu action: {e}")
         await message.answer("Error processing menu action")

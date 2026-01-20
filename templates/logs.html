@@ -180,11 +180,11 @@ function formatLogEntry(log) {
     }
     
     return `
-        <div class="log-entry ${log.level}">
+        <div class="log-entry ${escapeHtml(log.level)}">
             <div>
                 <span class="log-timestamp">${timestamp}</span>
-                <span class="log-level ${log.level}">${log.level}</span>
-                <span class="badge bg-secondary">${log.source}</span>
+                <span class="log-level ${escapeHtml(log.level)}">${escapeHtml(log.level)}</span>
+                <span class="badge bg-secondary">${escapeHtml(log.source)}</span>
             </div>
             <div class="log-message">${escapeHtml(log.message)}</div>
             ${detailsHtml}
