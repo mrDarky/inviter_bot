@@ -521,6 +521,8 @@ class Database:
     
     async def cleanup_expired_sessions(self, hours: int):
         """Remove sessions older than specified hours"""
+        # Ensure hours is an integer for safety
+        hours = int(hours)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 DELETE FROM sessions 

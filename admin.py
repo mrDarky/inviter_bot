@@ -141,7 +141,14 @@ async def verify_session(request: Request) -> bool:
         return False
     
     # Check if session is expired
-    created_at = datetime.fromisoformat(session_data["created_at"])
+    try:
+        # SQLite CURRENT_TIMESTAMP format is compatible with ISO format
+        created_at = datetime.fromisoformat(session_data["created_at"])
+    except (ValueError, KeyError):
+        # If parsing fails, consider session invalid
+        await db.delete_session(session_token)
+        return False
+    
     if datetime.now() - created_at > timedelta(hours=SESSION_EXPIRY_HOURS):
         await db.delete_session(session_token)
         return False
