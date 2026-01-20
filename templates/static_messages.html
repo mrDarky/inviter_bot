@@ -2,6 +2,18 @@
 
 {% block title %}Static Messages - Admin Panel{% endblock %}
 
+{% block extra_css %}
+<style>
+.message-preview {
+    min-height: 200px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    word-wrap: break-word;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-envelope"></i> Static Messages</h2>
@@ -249,17 +261,59 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-.message-preview {
-    min-height: 200px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 5px;
-    word-wrap: break-word;
-}
-</style>
-
 <script>
+function sanitizeHTML(html) {
+    // Create a temporary div to parse HTML
+    const temp = document.createElement('div');
+    temp.textContent = html; // This escapes all HTML
+    const escaped = temp.innerHTML;
+    
+    // Now only allow specific Telegram HTML tags
+    // Telegram supports: b, i, u, s, code, pre, a, tg-spoiler, tg-emoji
+    const allowedTags = {
+        '&lt;b&gt;': '<b>',
+        '&lt;/b&gt;': '</b>',
+        '&lt;i&gt;': '<i>',
+        '&lt;/i&gt;': '</i>',
+        '&lt;u&gt;': '<u>',
+        '&lt;/u&gt;': '</u>',
+        '&lt;s&gt;': '<s>',
+        '&lt;/s&gt;': '</s>',
+        '&lt;code&gt;': '<code>',
+        '&lt;/code&gt;': '</code>',
+        '&lt;pre&gt;': '<pre>',
+        '&lt;/pre&gt;': '</pre>',
+        '&lt;br&gt;': '<br>',
+        '&lt;br/&gt;': '<br>',
+        '&lt;br /&gt;': '<br>'
+    };
+    
+    let result = escaped;
+    for (const [escaped_tag, real_tag] of Object.entries(allowedTags)) {
+        result = result.replaceAll(escaped_tag, real_tag);
+    }
+    
+    // Handle links with href attribute (more complex parsing)
+    // Match pattern: &lt;a href="..."&gt;...&lt;/a&gt;
+    result = result.replace(/&lt;a href=&quot;([^&"]+)&quot;&gt;([^<]+)&lt;\/a&gt;/g, 
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
+    
+    return result;
+}
+
+function updatePreview(mode) {
+    const htmlText = document.getElementById(`${mode}Html`).value;
+    const previewDiv = document.getElementById(`${mode}Preview`);
+    
+    if (htmlText.trim()) {
+        // Sanitize and render HTML
+        const sanitized = sanitizeHTML(htmlText);
+        previewDiv.innerHTML = sanitized;
+    } else {
+        previewDiv.innerHTML = '<em class="text-muted">Type HTML text to see preview...</em>';
+    }
+}
+
 function handleMediaTypeChange(mode) {
     const mediaType = document.getElementById(`${mode}MediaType`).value;
     const uploadDiv = document.getElementById(`${mode}MediaUpload`);
@@ -268,20 +322,6 @@ function handleMediaTypeChange(mode) {
         uploadDiv.style.display = 'block';
     } else {
         uploadDiv.style.display = 'none';
-    }
-}
-
-function updatePreview(mode) {
-    const htmlText = document.getElementById(`${mode}Html`).value;
-    const previewDiv = document.getElementById(`${mode}Preview`);
-    
-    if (htmlText.trim()) {
-        // Convert Telegram HTML to regular HTML for preview
-        let preview = htmlText;
-        // Basic HTML is already supported, just display it
-        previewDiv.innerHTML = preview;
-    } else {
-        previewDiv.innerHTML = '<em class="text-muted">Type HTML text to see preview...</em>';
     }
 }
 

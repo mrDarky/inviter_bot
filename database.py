@@ -142,8 +142,10 @@ class Database:
                     if 'buttons_config' not in column_names:
                         await db.execute("ALTER TABLE static_messages ADD COLUMN buttons_config TEXT")
             except Exception as e:
-                # Column might already exist, ignore error
-                pass
+                # Log migration errors for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Migration warning (may be expected if columns already exist): {e}")
             
             await db.commit()
     

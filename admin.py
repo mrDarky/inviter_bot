@@ -468,12 +468,20 @@ async def upload_media(
         
         # Get admin user ID to send the file to (for storage)
         # We'll use a dummy chat - in production, you might want a specific storage chat
-        admin_chat_id = os.getenv('ADMIN_CHAT_ID')
-        if not admin_chat_id:
+        admin_chat_id_str = os.getenv('ADMIN_CHAT_ID')
+        if not admin_chat_id_str:
             # If no admin chat is configured, we can't upload
             raise HTTPException(
                 status_code=400, 
                 detail="ADMIN_CHAT_ID not configured. Please add your Telegram user ID to .env"
+            )
+        
+        try:
+            admin_chat_id = int(admin_chat_id_str)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail="ADMIN_CHAT_ID must be a valid integer"
             )
         
         # Send file to get file_id

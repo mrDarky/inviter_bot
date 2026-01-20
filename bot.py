@@ -401,13 +401,15 @@ async def send_static_messages():
                                 reply_markup=reply_markup
                             )
                         elif media_type == 'voice':
-                            await bot.send_voice(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
+                            # Voice messages don't support captions, send text separately
+                            await bot.send_voice(user['user_id'], media_file_id)
+                            if text:
+                                await bot.send_message(
+                                    user['user_id'],
+                                    text,
+                                    parse_mode=parse_mode,
+                                    reply_markup=reply_markup
+                                )
                         else:
                             # Fallback to text
                             await bot.send_message(
