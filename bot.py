@@ -316,10 +316,11 @@ async def parse_buttons_config(buttons_config: str):
 
 
 async def send_static_messages():
-    """Send static messages to users based on their join day"""
+    """Send static messages to users based on their join day and time"""
     try:
         users = await db.get_users()
         static_messages = await db.get_static_messages()
+        current_time = datetime.now()
         
         for user in users:
             if user['is_banned']:
@@ -327,102 +328,144 @@ async def send_static_messages():
             
             # Calculate days since join
             join_date = datetime.fromisoformat(user['join_date'])
-            days_since_join = (datetime.now() - join_date).days
+            days_since_join = (current_time - join_date).days
             
-            # Find matching static message
+            # Find matching static messages for this day
             for msg in static_messages:
-                if msg['is_active'] and msg['day_number'] == days_since_join:
-                    text = msg['html_text'] if msg['html_text'] else msg['text']
-                    parse_mode = "HTML" if msg['html_text'] else None
-                    media_type = msg.get('media_type', 'text')
-                    media_file_id = msg.get('media_file_id')
-                    buttons_config = msg.get('buttons_config')
+                if not msg['is_active'] or msg['day_number'] != days_since_join:
+                    continue
+                
+                # Check if message was already sent to this user
+                already_sent = await db.is_static_message_sent(user['user_id'], msg['id'])
+                if already_sent:
+                    continue
+                
+                # Get time configuration
+                send_time = msg.get('send_time')
+                additional_minutes = msg.get('additional_minutes', 0) or 0
+                
+                # Determine if it's time to send the message
+                should_send = False
+                
+                if days_since_join == 0:
+                    # Day 0: Send based on join time + additional minutes
+                    time_to_send = join_date + timedelta(minutes=additional_minutes)
+                    should_send = current_time >= time_to_send
+                else:
+                    # Day 1+: Send at specific time (or default 09:00) + additional minutes
+                    if not send_time:
+                        send_time = "09:00"  # Default send time
                     
-                    # Parse buttons if configured
-                    reply_markup = await parse_buttons_config(buttons_config) if buttons_config else None
-                    
+                    # Parse send_time (HH:MM format)
                     try:
-                        # Send based on media type
-                        if media_type == 'text' or not media_file_id:
-                            await bot.send_message(
-                                user['user_id'], 
-                                text, 
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'photo':
-                            await bot.send_photo(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'video':
-                            await bot.send_video(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'video_note':
-                            # Video notes don't support captions or buttons, send text separately
-                            await bot.send_video_note(user['user_id'], media_file_id)
-                            if text:
-                                await bot.send_message(
-                                    user['user_id'],
-                                    text,
-                                    parse_mode=parse_mode,
-                                    reply_markup=reply_markup
-                                )
-                        elif media_type == 'animation':
-                            await bot.send_animation(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'document':
-                            await bot.send_document(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'audio':
-                            await bot.send_audio(
-                                user['user_id'],
-                                media_file_id,
-                                caption=text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup
-                            )
-                        elif media_type == 'voice':
-                            # Voice messages don't support captions, send text separately
-                            await bot.send_voice(user['user_id'], media_file_id)
-                            if text:
-                                await bot.send_message(
-                                    user['user_id'],
-                                    text,
-                                    parse_mode=parse_mode,
-                                    reply_markup=reply_markup
-                                )
-                        else:
-                            # Fallback to text
+                        hour, minute = map(int, send_time.split(':'))
+                        target_date = join_date.date() + timedelta(days=days_since_join)
+                        time_to_send = datetime.combine(target_date, datetime.min.time()).replace(hour=hour, minute=minute)
+                        time_to_send += timedelta(minutes=additional_minutes)
+                        
+                        # Check if current time is within sending window (current time >= target time and < target time + 5 minutes)
+                        should_send = time_to_send <= current_time < time_to_send + timedelta(minutes=5)
+                    except (ValueError, AttributeError) as e:
+                        logger.warning(f"Invalid send_time format for message {msg['id']}: {send_time}, error: {e}")
+                        continue
+                
+                if not should_send:
+                    continue
+                
+                # Prepare message content
+                text = msg['html_text'] if msg['html_text'] else msg['text']
+                parse_mode = "HTML" if msg['html_text'] else None
+                media_type = msg.get('media_type', 'text')
+                media_file_id = msg.get('media_file_id')
+                buttons_config = msg.get('buttons_config')
+                
+                # Parse buttons if configured
+                reply_markup = await parse_buttons_config(buttons_config) if buttons_config else None
+                
+                try:
+                    # Send based on media type
+                    if media_type == 'text' or not media_file_id:
+                        await bot.send_message(
+                            user['user_id'], 
+                            text, 
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'photo':
+                        await bot.send_photo(
+                            user['user_id'],
+                            media_file_id,
+                            caption=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'video':
+                        await bot.send_video(
+                            user['user_id'],
+                            media_file_id,
+                            caption=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'video_note':
+                        # Video notes don't support captions or buttons, send text separately
+                        await bot.send_video_note(user['user_id'], media_file_id)
+                        if text:
                             await bot.send_message(
                                 user['user_id'],
                                 text,
                                 parse_mode=parse_mode,
                                 reply_markup=reply_markup
                             )
-                        
-                        await db.log_action(user['user_id'], "received_static_message", f"Day {days_since_join} message")
-                        logger.info(f"Static message sent to user {user['user_id']} for day {days_since_join}")
-                    except Exception as e:
-                        logger.warning(f"Could not send static message to user {user['user_id']}: {e}")
+                    elif media_type == 'animation':
+                        await bot.send_animation(
+                            user['user_id'],
+                            media_file_id,
+                            caption=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'document':
+                        await bot.send_document(
+                            user['user_id'],
+                            media_file_id,
+                            caption=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'audio':
+                        await bot.send_audio(
+                            user['user_id'],
+                            media_file_id,
+                            caption=text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    elif media_type == 'voice':
+                        # Voice messages don't support captions, send text separately
+                        await bot.send_voice(user['user_id'], media_file_id)
+                        if text:
+                            await bot.send_message(
+                                user['user_id'],
+                                text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                    else:
+                        # Fallback to text
+                        await bot.send_message(
+                            user['user_id'],
+                            text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup
+                        )
+                    
+                    # Mark message as sent
+                    await db.mark_static_message_sent(user['user_id'], msg['id'])
+                    await db.log_action(user['user_id'], "received_static_message", f"Day {days_since_join} message (ID: {msg['id']})")
+                    logger.info(f"Static message {msg['id']} sent to user {user['user_id']} for day {days_since_join}")
+                except Exception as e:
+                    logger.warning(f"Could not send static message to user {user['user_id']}: {e}")
     except Exception as e:
         logger.error(f"Error sending static messages: {e}")
 
@@ -450,7 +493,7 @@ async def main():
     
     # Setup scheduler
     scheduler.add_job(check_scheduled_messages, 'interval', minutes=1)
-    scheduler.add_job(send_static_messages, 'cron', hour=9, minute=0)  # Daily at 9 AM
+    scheduler.add_job(send_static_messages, 'interval', minutes=1)  # Check every minute for time-based messages
     scheduler.start()
     logger.info("Scheduler started")
     

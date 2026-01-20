@@ -110,6 +110,8 @@ class StaticMessageRequest(BaseModel):
     media_type: Optional[str] = 'text'
     media_file_id: Optional[str] = None
     buttons_config: Optional[str] = None
+    send_time: Optional[str] = None
+    additional_minutes: Optional[int] = 0
 
 
 class SettingRequest(BaseModel):
@@ -405,7 +407,9 @@ async def add_static_message(request: StaticMessageRequest, _: None = Depends(re
         request.html_text, 
         request.media_type, 
         request.media_file_id, 
-        request.buttons_config
+        request.buttons_config,
+        request.send_time,
+        request.additional_minutes
     )
     return {"status": "success", "message": "Static message added"}
 
@@ -420,7 +424,9 @@ async def update_static_message(message_id: int, request: StaticMessageRequest, 
         request.html_text, 
         request.media_type, 
         request.media_file_id, 
-        request.buttons_config
+        request.buttons_config,
+        request.send_time,
+        request.additional_minutes
     )
     return {"status": "success", "message": "Static message updated"}
 

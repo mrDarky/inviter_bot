@@ -26,7 +26,14 @@
     <i class="bi bi-info-circle"></i>
     <strong>Info:</strong> Static messages are automatically sent to users on specific days after they join.
     For example, a "Day 1" message will be sent to users one day after they join the channel.
-    You can add text, images, videos, round videos, and buttons with URLs.
+    <br><br>
+    <strong>Time Configuration:</strong>
+    <ul class="mb-0 mt-2">
+        <li><strong>Day 0:</strong> Messages are sent based on join time + additional minutes (no specific time needed)</li>
+        <li><strong>Day 1+:</strong> Messages are sent at a specific UTC time (e.g., 12:05) + additional minutes</li>
+        <li>Multiple messages can be scheduled for the same day with different times</li>
+        <li>Additional minutes can be used to offset the send time (e.g., +5 min, +15 min)</li>
+    </ul>
 </div>
 
 <!-- Static Messages Table -->
@@ -39,6 +46,7 @@
                         <th>Day Number</th>
                         <th>Type</th>
                         <th>Message</th>
+                        <th>Send Time</th>
                         <th>Buttons</th>
                         <th>Status</th>
                         <th>Created</th>
@@ -58,6 +66,16 @@
                             <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
                                 {{ msg.text[:80] }}{% if msg.text|length > 80 %}...{% endif %}
                             </div>
+                        </td>
+                        <td>
+                            {% if msg.send_time %}
+                            <span class="badge bg-secondary">{{ msg.send_time }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{% if msg.day_number == 0 %}From Join{% else %}09:00{% endif %}</span>
+                            {% endif %}
+                            {% if msg.additional_minutes and msg.additional_minutes > 0 %}
+                            <span class="badge bg-warning text-dark">+{{ msg.additional_minutes }}m</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if msg.buttons_config %}
@@ -107,8 +125,20 @@
                         <h6>Message Configuration</h6>
                         <div class="mb-3">
                             <label class="form-label">Day Number</label>
-                            <input type="number" class="form-control" id="addDayNumber" min="0" required>
+                            <input type="number" class="form-control" id="addDayNumber" min="0" required onchange="handleDayNumberChange('add')">
                             <small class="text-muted">Day 0 = immediately after join, Day 1 = 1 day after, etc.</small>
+                        </div>
+                        
+                        <div class="mb-3" id="addSendTimeDiv" style="display: none;">
+                            <label class="form-label">Send Time (UTC)</label>
+                            <input type="time" class="form-control" id="addSendTime" placeholder="HH:MM">
+                            <small class="text-muted">Time in UTC when to send (for Day 1+). Leave empty for 09:00 default.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Additional Minutes (Optional)</label>
+                            <input type="number" class="form-control" id="addAdditionalMinutes" min="0" value="0">
+                            <small class="text-muted">Offset in minutes to add to send time (e.g., 5, 15, 30)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -192,7 +222,19 @@
                         <h6>Message Configuration</h6>
                         <div class="mb-3">
                             <label class="form-label">Day Number</label>
-                            <input type="number" class="form-control" id="editDayNumber" min="0" required>
+                            <input type="number" class="form-control" id="editDayNumber" min="0" required onchange="handleDayNumberChange('edit')">
+                        </div>
+                        
+                        <div class="mb-3" id="editSendTimeDiv" style="display: none;">
+                            <label class="form-label">Send Time (UTC)</label>
+                            <input type="time" class="form-control" id="editSendTime" placeholder="HH:MM">
+                            <small class="text-muted">Time in UTC when to send (for Day 1+). Leave empty for 09:00 default.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Additional Minutes (Optional)</label>
+                            <input type="number" class="form-control" id="editAdditionalMinutes" min="0" value="0">
+                            <small class="text-muted">Offset in minutes to add to send time (e.g., 5, 15, 30)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -325,6 +367,20 @@ function handleMediaTypeChange(mode) {
     }
 }
 
+function handleDayNumberChange(mode) {
+    const dayNumber = document.getElementById(`${mode}DayNumber`).value;
+    const sendTimeDiv = document.getElementById(`${mode}SendTimeDiv`);
+    
+    if (parseInt(dayNumber) === 0) {
+        sendTimeDiv.style.display = 'none';
+    } else {
+        sendTimeDiv.style.display = 'block';
+    }
+}
+        uploadDiv.style.display = 'none';
+    }
+}
+
 async function uploadMedia(mode) {
     const fileInput = document.getElementById(`${mode}MediaFile`);
     const mediaType = document.getElementById(`${mode}MediaType`).value;
@@ -367,6 +423,8 @@ async function addMessage() {
     const mediaType = document.getElementById('addMediaType').value;
     const mediaFileId = document.getElementById('addMediaFileId').value;
     const buttonsConfig = document.getElementById('addButtons').value.trim();
+    const sendTime = document.getElementById('addSendTime').value;
+    const additionalMinutes = document.getElementById('addAdditionalMinutes').value || 0;
     
     if (!dayNumber || !text) {
         alert('Please fill in required fields');
@@ -388,7 +446,9 @@ async function addMessage() {
                 html_text: htmlText,
                 media_type: mediaType,
                 media_file_id: mediaFileId,
-                buttons_config: buttonsConfig
+                buttons_config: buttonsConfig,
+                send_time: sendTime || null,
+                additional_minutes: parseInt(additionalMinutes)
             })
         });
         const data = await response.json();
@@ -407,8 +467,11 @@ function editMessage(msg) {
     document.getElementById('editMediaType').value = msg.media_type || 'text';
     document.getElementById('editMediaFileId').value = msg.media_file_id || '';
     document.getElementById('editButtons').value = msg.buttons_config || '';
+    document.getElementById('editSendTime').value = msg.send_time || '';
+    document.getElementById('editAdditionalMinutes').value = msg.additional_minutes || 0;
     
     handleMediaTypeChange('edit');
+    handleDayNumberChange('edit');
     updatePreview('edit');
     
     const modal = new bootstrap.Modal(document.getElementById('editMessageModal'));
@@ -423,6 +486,8 @@ async function updateMessage() {
     const mediaType = document.getElementById('editMediaType').value;
     const mediaFileId = document.getElementById('editMediaFileId').value;
     const buttonsConfig = document.getElementById('editButtons').value.trim();
+    const sendTime = document.getElementById('editSendTime').value;
+    const additionalMinutes = document.getElementById('editAdditionalMinutes').value || 0;
     
     if (!text) {
         alert('Please enter message text');
@@ -444,7 +509,9 @@ async function updateMessage() {
                 html_text: htmlText,
                 media_type: mediaType,
                 media_file_id: mediaFileId,
-                buttons_config: buttonsConfig
+                buttons_config: buttonsConfig,
+                send_time: sendTime || null,
+                additional_minutes: parseInt(additionalMinutes)
             })
         });
         const data = await response.json();
