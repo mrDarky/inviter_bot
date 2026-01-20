@@ -276,6 +276,45 @@ async def check_scheduled_messages():
         logger.error(f"Error checking scheduled messages: {e}")
 
 
+async def parse_buttons_config(buttons_config: str):
+    """Parse button configuration string into InlineKeyboardMarkup
+    Format: 
+    some text 1 | url1, some text2 | url2
+    some text 3 | url3
+    (1 row per line, separated by commas for columns)
+    """
+    if not buttons_config or not buttons_config.strip():
+        return None
+    
+    try:
+        rows = []
+        for line in buttons_config.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Split by comma for multiple buttons in one row
+            buttons_in_row = []
+            for button_str in line.split(','):
+                button_str = button_str.strip()
+                if '|' in button_str:
+                    parts = button_str.split('|', 1)
+                    text = parts[0].strip()
+                    url = parts[1].strip()
+                    if text and url:
+                        buttons_in_row.append(InlineKeyboardButton(text=text, url=url))
+            
+            if buttons_in_row:
+                rows.append(buttons_in_row)
+        
+        if rows:
+            return InlineKeyboardMarkup(inline_keyboard=rows)
+        return None
+    except Exception as e:
+        logger.error(f"Error parsing buttons config: {e}")
+        return None
+
+
 async def send_static_messages():
     """Send static messages to users based on their join day"""
     try:
@@ -295,9 +334,91 @@ async def send_static_messages():
                 if msg['is_active'] and msg['day_number'] == days_since_join:
                     text = msg['html_text'] if msg['html_text'] else msg['text']
                     parse_mode = "HTML" if msg['html_text'] else None
+                    media_type = msg.get('media_type', 'text')
+                    media_file_id = msg.get('media_file_id')
+                    buttons_config = msg.get('buttons_config')
+                    
+                    # Parse buttons if configured
+                    reply_markup = await parse_buttons_config(buttons_config) if buttons_config else None
                     
                     try:
-                        await bot.send_message(user['user_id'], text, parse_mode=parse_mode)
+                        # Send based on media type
+                        if media_type == 'text' or not media_file_id:
+                            await bot.send_message(
+                                user['user_id'], 
+                                text, 
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'photo':
+                            await bot.send_photo(
+                                user['user_id'],
+                                media_file_id,
+                                caption=text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'video':
+                            await bot.send_video(
+                                user['user_id'],
+                                media_file_id,
+                                caption=text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'video_note':
+                            # Video notes don't support captions or buttons, send text separately
+                            await bot.send_video_note(user['user_id'], media_file_id)
+                            if text:
+                                await bot.send_message(
+                                    user['user_id'],
+                                    text,
+                                    parse_mode=parse_mode,
+                                    reply_markup=reply_markup
+                                )
+                        elif media_type == 'animation':
+                            await bot.send_animation(
+                                user['user_id'],
+                                media_file_id,
+                                caption=text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'document':
+                            await bot.send_document(
+                                user['user_id'],
+                                media_file_id,
+                                caption=text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'audio':
+                            await bot.send_audio(
+                                user['user_id'],
+                                media_file_id,
+                                caption=text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        elif media_type == 'voice':
+                            # Voice messages don't support captions, send text separately
+                            await bot.send_voice(user['user_id'], media_file_id)
+                            if text:
+                                await bot.send_message(
+                                    user['user_id'],
+                                    text,
+                                    parse_mode=parse_mode,
+                                    reply_markup=reply_markup
+                                )
+                        else:
+                            # Fallback to text
+                            await bot.send_message(
+                                user['user_id'],
+                                text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        
                         await db.log_action(user['user_id'], "received_static_message", f"Day {days_since_join} message")
                         logger.info(f"Static message sent to user {user['user_id']} for day {days_since_join}")
                     except Exception as e:

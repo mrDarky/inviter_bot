@@ -54,6 +54,9 @@ class Database:
                     day_number INTEGER NOT NULL,
                     text TEXT NOT NULL,
                     html_text TEXT,
+                    media_type TEXT DEFAULT 'text',
+                    media_file_id TEXT,
+                    buttons_config TEXT,
                     is_active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -124,6 +127,25 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Migration: Add new columns to static_messages if they don't exist
+            try:
+                # Check if columns exist
+                async with db.execute("PRAGMA table_info(static_messages)") as cursor:
+                    columns = await cursor.fetchall()
+                    column_names = [col[1] for col in columns]
+                    
+                    if 'media_type' not in column_names:
+                        await db.execute("ALTER TABLE static_messages ADD COLUMN media_type TEXT DEFAULT 'text'")
+                    if 'media_file_id' not in column_names:
+                        await db.execute("ALTER TABLE static_messages ADD COLUMN media_file_id TEXT")
+                    if 'buttons_config' not in column_names:
+                        await db.execute("ALTER TABLE static_messages ADD COLUMN buttons_config TEXT")
+            except Exception as e:
+                # Log migration errors for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Migration warning (may be expected if columns already exist): {e}")
             
             await db.commit()
     
@@ -298,13 +320,13 @@ class Database:
             await db.commit()
     
     # Static messages
-    async def add_static_message(self, day_number: int, text: str, html_text: str):
+    async def add_static_message(self, day_number: int, text: str, html_text: str, media_type: str = 'text', media_file_id: str = None, buttons_config: str = None):
         """Add static message"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT INTO static_messages (day_number, text, html_text)
-                VALUES (?, ?, ?)
-            """, (day_number, text, html_text))
+                INSERT INTO static_messages (day_number, text, html_text, media_type, media_file_id, buttons_config)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (day_number, text, html_text, media_type, media_file_id, buttons_config))
             await db.commit()
     
     async def get_static_messages(self):
@@ -318,12 +340,12 @@ class Database:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
     
-    async def update_static_message(self, message_id: int, day_number: int, text: str, html_text: str):
+    async def update_static_message(self, message_id: int, day_number: int, text: str, html_text: str, media_type: str = 'text', media_file_id: str = None, buttons_config: str = None):
         """Update static message"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                UPDATE static_messages SET day_number = ?, text = ?, html_text = ? WHERE id = ?
-            """, (day_number, text, html_text, message_id))
+                UPDATE static_messages SET day_number = ?, text = ?, html_text = ?, media_type = ?, media_file_id = ?, buttons_config = ? WHERE id = ?
+            """, (day_number, text, html_text, media_type, media_file_id, buttons_config, message_id))
             await db.commit()
     
     async def delete_static_message(self, message_id: int):

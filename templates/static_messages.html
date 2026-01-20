@@ -2,6 +2,18 @@
 
 {% block title %}Static Messages - Admin Panel{% endblock %}
 
+{% block extra_css %}
+<style>
+.message-preview {
+    min-height: 200px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    word-wrap: break-word;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-envelope"></i> Static Messages</h2>
@@ -14,6 +26,7 @@
     <i class="bi bi-info-circle"></i>
     <strong>Info:</strong> Static messages are automatically sent to users on specific days after they join.
     For example, a "Day 1" message will be sent to users one day after they join the channel.
+    You can add text, images, videos, round videos, and buttons with URLs.
 </div>
 
 <!-- Static Messages Table -->
@@ -24,7 +37,9 @@
                 <thead>
                     <tr>
                         <th>Day Number</th>
+                        <th>Type</th>
                         <th>Message</th>
+                        <th>Buttons</th>
                         <th>Status</th>
                         <th>Created</th>
                         <th>Actions</th>
@@ -37,9 +52,19 @@
                             <span class="badge bg-primary">Day {{ msg.day_number }}</span>
                         </td>
                         <td>
-                            <div style="max-width: 400px; overflow: hidden; text-overflow: ellipsis;">
-                                {{ msg.text[:100] }}{% if msg.text|length > 100 %}...{% endif %}
+                            <span class="badge bg-info">{{ msg.media_type or 'text' }}</span>
+                        </td>
+                        <td>
+                            <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                                {{ msg.text[:80] }}{% if msg.text|length > 80 %}...{% endif %}
                             </div>
+                        </td>
+                        <td>
+                            {% if msg.buttons_config %}
+                            <i class="bi bi-link-45deg text-success" title="Has buttons"></i>
+                            {% else %}
+                            <i class="bi bi-dash text-muted"></i>
+                            {% endif %}
                         </td>
                         <td>
                             {% if msg.is_active %}
@@ -50,7 +75,7 @@
                         </td>
                         <td>{{ msg.created_at[:10] }}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editMessage({{ msg.id }}, {{ msg.day_number }}, this.dataset.text, this.dataset.html)" data-text="{{ msg.text }}" data-html="{{ msg.html_text or '' }}">
+                            <button class="btn btn-sm btn-warning" onclick='editMessage({{ msg | tojson }})'>
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <button class="btn btn-sm btn-info" onclick="toggleMessage({{ msg.id }})">
@@ -70,26 +95,76 @@
 
 <!-- Add Message Modal -->
 <div class="modal fade" id="addMessageModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add Static Message</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Day Number</label>
-                    <input type="number" class="form-control" id="addDayNumber" min="0" required>
-                    <small class="text-muted">Day 0 = immediately after join, Day 1 = 1 day after, etc.</small>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Message Text</label>
-                    <textarea class="form-control" id="addText" rows="4" required></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">HTML Text (Optional)</label>
-                    <textarea class="form-control" id="addHtml" rows="4"></textarea>
-                    <small class="text-muted">Leave empty to send plain text</small>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Message Configuration</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Day Number</label>
+                            <input type="number" class="form-control" id="addDayNumber" min="0" required>
+                            <small class="text-muted">Day 0 = immediately after join, Day 1 = 1 day after, etc.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Media Type</label>
+                            <select class="form-select" id="addMediaType" onchange="handleMediaTypeChange('add')">
+                                <option value="text">Text Only</option>
+                                <option value="photo">Photo + Text</option>
+                                <option value="video">Video + Text</option>
+                                <option value="video_note">Round Video (Video Note)</option>
+                                <option value="animation">GIF/Animation + Text</option>
+                                <option value="document">Document + Text</option>
+                                <option value="audio">Audio + Text</option>
+                                <option value="voice">Voice + Text</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3" id="addMediaUpload" style="display: none;">
+                            <label class="form-label">Upload Media File</label>
+                            <input type="file" class="form-control" id="addMediaFile" accept="image/*,video/*,audio/*">
+                            <small class="text-muted">Upload file to Telegram and get file ID</small>
+                            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="uploadMedia('add')">
+                                <i class="bi bi-upload"></i> Upload
+                            </button>
+                            <div id="addUploadStatus" class="mt-2"></div>
+                            <input type="hidden" id="addMediaFileId">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Message Text</label>
+                            <textarea class="form-control" id="addText" rows="4" required></textarea>
+                            <small class="text-muted">Plain text for fallback</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">HTML Text (Optional)</label>
+                            <textarea class="form-control" id="addHtml" rows="4" oninput="updatePreview('add')"></textarea>
+                            <small class="text-muted">Use HTML formatting: &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;a href="url"&gt;link&lt;/a&gt;</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Buttons Configuration (Optional)</label>
+                            <textarea class="form-control" id="addButtons" rows="3" placeholder="Button 1 | https://url1.com, Button 2 | https://url2.com&#10;Button 3 | https://url3.com"></textarea>
+                            <small class="text-muted">Format: text | url, text2 | url2 (one row per line, comma for columns)</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Live Preview</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <div id="addPreview" class="message-preview">
+                                    <em class="text-muted">Type HTML text to see preview...</em>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -104,7 +179,7 @@
 
 <!-- Edit Message Modal -->
 <div class="modal fade" id="editMessageModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Static Message</h5>
@@ -112,17 +187,66 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="editMessageId">
-                <div class="mb-3">
-                    <label class="form-label">Day Number</label>
-                    <input type="number" class="form-control" id="editDayNumber" min="0" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Message Text</label>
-                    <textarea class="form-control" id="editText" rows="4" required></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">HTML Text (Optional)</label>
-                    <textarea class="form-control" id="editHtml" rows="4"></textarea>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Message Configuration</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Day Number</label>
+                            <input type="number" class="form-control" id="editDayNumber" min="0" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Media Type</label>
+                            <select class="form-select" id="editMediaType" onchange="handleMediaTypeChange('edit')">
+                                <option value="text">Text Only</option>
+                                <option value="photo">Photo + Text</option>
+                                <option value="video">Video + Text</option>
+                                <option value="video_note">Round Video (Video Note)</option>
+                                <option value="animation">GIF/Animation + Text</option>
+                                <option value="document">Document + Text</option>
+                                <option value="audio">Audio + Text</option>
+                                <option value="voice">Voice + Text</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3" id="editMediaUpload">
+                            <label class="form-label">Upload Media File</label>
+                            <input type="file" class="form-control" id="editMediaFile" accept="image/*,video/*,audio/*">
+                            <small class="text-muted">Upload new file or keep existing</small>
+                            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="uploadMedia('edit')">
+                                <i class="bi bi-upload"></i> Upload
+                            </button>
+                            <div id="editUploadStatus" class="mt-2"></div>
+                            <input type="hidden" id="editMediaFileId">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Message Text</label>
+                            <textarea class="form-control" id="editText" rows="4" required></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">HTML Text (Optional)</label>
+                            <textarea class="form-control" id="editHtml" rows="4" oninput="updatePreview('edit')"></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Buttons Configuration (Optional)</label>
+                            <textarea class="form-control" id="editButtons" rows="3" placeholder="Button 1 | https://url1.com, Button 2 | https://url2.com&#10;Button 3 | https://url3.com"></textarea>
+                            <small class="text-muted">Format: text | url, text2 | url2 (one row per line, comma for columns)</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Live Preview</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <div id="editPreview" class="message-preview">
+                                    <em class="text-muted">Type HTML text to see preview...</em>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -138,13 +262,119 @@
 
 {% block extra_js %}
 <script>
+function sanitizeHTML(html) {
+    // Create a temporary div to parse HTML
+    const temp = document.createElement('div');
+    temp.textContent = html; // This escapes all HTML
+    const escaped = temp.innerHTML;
+    
+    // Now only allow specific Telegram HTML tags
+    // Telegram supports: b, i, u, s, code, pre, a, tg-spoiler, tg-emoji
+    const allowedTags = {
+        '&lt;b&gt;': '<b>',
+        '&lt;/b&gt;': '</b>',
+        '&lt;i&gt;': '<i>',
+        '&lt;/i&gt;': '</i>',
+        '&lt;u&gt;': '<u>',
+        '&lt;/u&gt;': '</u>',
+        '&lt;s&gt;': '<s>',
+        '&lt;/s&gt;': '</s>',
+        '&lt;code&gt;': '<code>',
+        '&lt;/code&gt;': '</code>',
+        '&lt;pre&gt;': '<pre>',
+        '&lt;/pre&gt;': '</pre>',
+        '&lt;br&gt;': '<br>',
+        '&lt;br/&gt;': '<br>',
+        '&lt;br /&gt;': '<br>'
+    };
+    
+    let result = escaped;
+    for (const [escaped_tag, real_tag] of Object.entries(allowedTags)) {
+        result = result.replaceAll(escaped_tag, real_tag);
+    }
+    
+    // Handle links with href attribute (more complex parsing)
+    // Match pattern: &lt;a href="..."&gt;...&lt;/a&gt;
+    result = result.replace(/&lt;a href=&quot;([^&"]+)&quot;&gt;([^<]+)&lt;\/a&gt;/g, 
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
+    
+    return result;
+}
+
+function updatePreview(mode) {
+    const htmlText = document.getElementById(`${mode}Html`).value;
+    const previewDiv = document.getElementById(`${mode}Preview`);
+    
+    if (htmlText.trim()) {
+        // Sanitize and render HTML
+        const sanitized = sanitizeHTML(htmlText);
+        previewDiv.innerHTML = sanitized;
+    } else {
+        previewDiv.innerHTML = '<em class="text-muted">Type HTML text to see preview...</em>';
+    }
+}
+
+function handleMediaTypeChange(mode) {
+    const mediaType = document.getElementById(`${mode}MediaType`).value;
+    const uploadDiv = document.getElementById(`${mode}MediaUpload`);
+    
+    if (mediaType !== 'text') {
+        uploadDiv.style.display = 'block';
+    } else {
+        uploadDiv.style.display = 'none';
+    }
+}
+
+async function uploadMedia(mode) {
+    const fileInput = document.getElementById(`${mode}MediaFile`);
+    const mediaType = document.getElementById(`${mode}MediaType`).value;
+    const statusDiv = document.getElementById(`${mode}UploadStatus`);
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        statusDiv.innerHTML = '<span class="text-danger">Please select a file</span>';
+        return;
+    }
+    
+    statusDiv.innerHTML = '<span class="text-info"><i class="bi bi-hourglass-split"></i> Uploading...</span>';
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('media_type', mediaType);
+        
+        const response = await fetch('/api/static-messages/upload-media', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.file_id) {
+            document.getElementById(`${mode}MediaFileId`).value = data.file_id;
+            statusDiv.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> Uploaded! File ID: ${data.file_id.substring(0, 20)}...</span>`;
+        } else {
+            statusDiv.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle"></i> ${data.detail || 'Upload failed'}</span>`;
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle"></i> Error: ${error.message}</span>`;
+    }
+}
+
 async function addMessage() {
     const dayNumber = document.getElementById('addDayNumber').value;
     const text = document.getElementById('addText').value.trim();
     const htmlText = document.getElementById('addHtml').value.trim();
+    const mediaType = document.getElementById('addMediaType').value;
+    const mediaFileId = document.getElementById('addMediaFileId').value;
+    const buttonsConfig = document.getElementById('addButtons').value.trim();
     
     if (!dayNumber || !text) {
         alert('Please fill in required fields');
+        return;
+    }
+    
+    if (mediaType !== 'text' && !mediaFileId) {
+        alert('Please upload a media file or change media type to "Text Only"');
         return;
     }
     
@@ -155,7 +385,10 @@ async function addMessage() {
             body: JSON.stringify({
                 day_number: parseInt(dayNumber),
                 text: text,
-                html_text: htmlText
+                html_text: htmlText,
+                media_type: mediaType,
+                media_file_id: mediaFileId,
+                buttons_config: buttonsConfig
             })
         });
         const data = await response.json();
@@ -166,11 +399,17 @@ async function addMessage() {
     }
 }
 
-function editMessage(id, dayNumber, text, htmlText) {
-    document.getElementById('editMessageId').value = id;
-    document.getElementById('editDayNumber').value = dayNumber;
-    document.getElementById('editText').value = text;
-    document.getElementById('editHtml').value = htmlText;
+function editMessage(msg) {
+    document.getElementById('editMessageId').value = msg.id;
+    document.getElementById('editDayNumber').value = msg.day_number;
+    document.getElementById('editText').value = msg.text || '';
+    document.getElementById('editHtml').value = msg.html_text || '';
+    document.getElementById('editMediaType').value = msg.media_type || 'text';
+    document.getElementById('editMediaFileId').value = msg.media_file_id || '';
+    document.getElementById('editButtons').value = msg.buttons_config || '';
+    
+    handleMediaTypeChange('edit');
+    updatePreview('edit');
     
     const modal = new bootstrap.Modal(document.getElementById('editMessageModal'));
     modal.show();
@@ -181,9 +420,17 @@ async function updateMessage() {
     const dayNumber = document.getElementById('editDayNumber').value;
     const text = document.getElementById('editText').value.trim();
     const htmlText = document.getElementById('editHtml').value.trim();
+    const mediaType = document.getElementById('editMediaType').value;
+    const mediaFileId = document.getElementById('editMediaFileId').value;
+    const buttonsConfig = document.getElementById('editButtons').value.trim();
     
     if (!text) {
         alert('Please enter message text');
+        return;
+    }
+    
+    if (mediaType !== 'text' && !mediaFileId) {
+        alert('Please upload a media file or change media type to "Text Only"');
         return;
     }
     
@@ -194,7 +441,10 @@ async function updateMessage() {
             body: JSON.stringify({
                 day_number: parseInt(dayNumber),
                 text: text,
-                html_text: htmlText
+                html_text: htmlText,
+                media_type: mediaType,
+                media_file_id: mediaFileId,
+                buttons_config: buttonsConfig
             })
         });
         const data = await response.json();
