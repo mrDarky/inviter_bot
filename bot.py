@@ -26,7 +26,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 
 # Initialize bot and dispatcher
 bot = None
-dp = None
+dp = Dispatcher()  # Create dispatcher at module level
 db = Database(DATABASE_PATH)
 
 # Scheduler for scheduled messages
@@ -73,7 +73,13 @@ async def get_bot_token():
 
 
 def init_bot():
-    """Initialize bot and dispatcher"""
+    """Initialize bot and dispatcher.
+    
+    Returns:
+        bool: True if bot was initialized successfully with env token,
+              False if bot token needs to be retrieved from database.
+              Caller should handle database token retrieval in async context.
+    """
     global bot, dp, BOT_TOKEN
     if bot is None:
         # Try to get token from env for sync initialization
@@ -288,7 +294,7 @@ async def send_static_messages():
 
 async def main():
     """Main function"""
-    global bot, dp, BOT_TOKEN
+    global bot, BOT_TOKEN
     
     # Initialize database first
     await db.init_db()
@@ -304,13 +310,8 @@ async def main():
     
     # Initialize bot with token
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
     
-    # Re-register handlers (since we created a new dispatcher)
-    dp.message.register(cmd_start, Command("start"))
-    dp.message.register(handle_menu_message, F.text)
-    dp.chat_member.register(on_user_join, ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
-    dp.chat_member.register(on_user_leave, ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
+    # Handlers are already registered via decorators at module level
     
     # Setup scheduler
     scheduler.add_job(check_scheduled_messages, 'interval', minutes=1)
