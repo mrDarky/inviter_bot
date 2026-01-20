@@ -327,9 +327,18 @@ async def delete_users(user_ids: List[int], _: None = Depends(require_auth)):
 async def send_message(request: MessageRequest, _: None = Depends(require_auth)):
     """Send message to selected users"""
     try:
-        # Import bot only when needed
-        from bot import bot, init_bot
-        init_bot()
+        # Import bot and get token
+        from aiogram import Bot
+        
+        # Get bot token from DB or env
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
         
         text = request.html_text if request.html_text else request.text
         parse_mode = "HTML" if request.html_text else None
@@ -339,12 +348,14 @@ async def send_message(request: MessageRequest, _: None = Depends(require_auth))
         
         for user_id in request.user_ids:
             try:
-                await bot.send_message(user_id, text, parse_mode=parse_mode)
+                await bot_instance.send_message(user_id, text, parse_mode=parse_mode)
                 success_count += 1
                 await db.log_action(user_id, "received_message", "Message sent via admin panel")
                 await asyncio.sleep(0.05)  # Rate limiting
             except Exception as e:
                 fail_count += 1
+        
+        await bot_instance.session.close()
         
         return {
             "status": "success",
@@ -352,7 +363,10 @@ async def send_message(request: MessageRequest, _: None = Depends(require_auth))
             "success_count": success_count,
             "fail_count": fail_count
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

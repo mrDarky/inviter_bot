@@ -76,19 +76,18 @@ def init_bot():
     """Initialize bot and dispatcher"""
     global bot, dp, BOT_TOKEN
     if bot is None:
-        # Try to get token synchronously
-        import asyncio
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            BOT_TOKEN = os.getenv("BOT_TOKEN")  # Use env as fallback for init
-        else:
-            BOT_TOKEN = loop.run_until_complete(get_bot_token())
+        # Try to get token from env for sync initialization
+        BOT_TOKEN = os.getenv("BOT_TOKEN")
         
         if not BOT_TOKEN:
-            raise ValueError("BOT_TOKEN not found")
+            # If no env token, we need async context to get from DB
+            # This will be handled by the caller
+            return False
         
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher()
+        return True
+    return True
 
 
 async def build_main_menu():
