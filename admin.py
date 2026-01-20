@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -119,7 +120,6 @@ SESSION_EXPIRY_HOURS = 24
 
 def create_session(username: str) -> str:
     """Create a session token - caller must store it in database before use"""
-    import secrets
     token = secrets.token_urlsafe(32)
     return token
 
@@ -141,7 +141,6 @@ async def verify_session(request: Request) -> bool:
         return False
     
     # Check if session is expired
-    from datetime import timedelta
     created_at = datetime.fromisoformat(session_data["created_at"])
     if datetime.now() - created_at > timedelta(hours=SESSION_EXPIRY_HOURS):
         await db.delete_session(session_token)
