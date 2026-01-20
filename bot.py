@@ -320,7 +320,7 @@ async def send_static_messages():
     try:
         users = await db.get_users()
         static_messages = await db.get_static_messages()
-        current_time = datetime.now()
+        current_time = datetime.utcnow()  # Use UTC time explicitly
         
         for user in users:
             if user['is_banned']:
@@ -360,7 +360,8 @@ async def send_static_messages():
                     try:
                         hour, minute = map(int, send_time.split(':'))
                         target_date = join_date.date() + timedelta(days=days_since_join)
-                        time_to_send = datetime.combine(target_date, datetime.min.time()).replace(hour=hour, minute=minute)
+                        from datetime import time as dt_time
+                        time_to_send = datetime.combine(target_date, dt_time(hour, minute))
                         time_to_send += timedelta(minutes=additional_minutes)
                         
                         # Check if current time is within sending window (current time >= target time and < target time + 5 minutes)
