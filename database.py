@@ -116,6 +116,15 @@ class Database:
                 )
             """)
             
+            # Sessions table for persistent login
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_token TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             await db.commit()
     
     # User operations
@@ -484,4 +493,37 @@ class Database:
                 SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
                 WHERE id = ?
             """, (menu_id,))
+            await db.commit()
+    
+    # Session operations
+    async def create_session(self, session_token: str, username: str):
+        """Create a new session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO sessions (session_token, username)
+                VALUES (?, ?)
+            """, (session_token, username))
+            await db.commit()
+    
+    async def get_session(self, session_token: str):
+        """Get session by token"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM sessions WHERE session_token = ?", (session_token,)) as cursor:
+                result = await cursor.fetchone()
+                return dict(result) if result else None
+    
+    async def delete_session(self, session_token: str):
+        """Delete a session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM sessions WHERE session_token = ?", (session_token,))
+            await db.commit()
+    
+    async def cleanup_expired_sessions(self, hours: int):
+        """Remove sessions older than specified hours"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                DELETE FROM sessions 
+                WHERE created_at < datetime('now', '-' || ? || ' hours')
+            """, (hours,))
             await db.commit()
