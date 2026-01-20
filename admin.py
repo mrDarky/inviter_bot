@@ -113,15 +113,14 @@ class SettingRequest(BaseModel):
     value: str
 
 
-# Simple session management - now using database for persistence
+# Session management - persistent storage in database
 SESSION_EXPIRY_HOURS = 24
 
 
 def create_session(username: str) -> str:
-    """Create a session token"""
+    """Create a session token - caller must store it in database before use"""
     import secrets
     token = secrets.token_urlsafe(32)
-    # Session will be stored in database asynchronously in the login handler
     return token
 
 
