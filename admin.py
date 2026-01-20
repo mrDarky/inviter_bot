@@ -105,7 +105,7 @@ class ScheduleMessageRequest(BaseModel):
 
 class StaticMessageRequest(BaseModel):
     day_number: int
-    text: str
+    text: Optional[str] = None
     html_text: Optional[str] = None
     media_type: Optional[str] = 'text'
     media_file_id: Optional[str] = None
@@ -401,9 +401,14 @@ async def delete_scheduled_message(message_id: int, _: None = Depends(require_au
 @app.post("/api/static-messages/add")
 async def add_static_message(request: StaticMessageRequest, _: None = Depends(require_auth)):
     """Add static message"""
+    # Use html_text as fallback if text is not provided
+    text_value = request.text if request.text else request.html_text
+    if not text_value:
+        raise HTTPException(status_code=400, detail="Either text or html_text must be provided")
+    
     await db.add_static_message(
         request.day_number, 
-        request.text, 
+        text_value, 
         request.html_text, 
         request.media_type, 
         request.media_file_id, 
@@ -417,10 +422,15 @@ async def add_static_message(request: StaticMessageRequest, _: None = Depends(re
 @app.put("/api/static-messages/{message_id}")
 async def update_static_message(message_id: int, request: StaticMessageRequest, _: None = Depends(require_auth)):
     """Update static message"""
+    # Use html_text as fallback if text is not provided
+    text_value = request.text if request.text else request.html_text
+    if not text_value:
+        raise HTTPException(status_code=400, detail="Either text or html_text must be provided")
+    
     await db.update_static_message(
         message_id, 
         request.day_number, 
-        request.text, 
+        text_value, 
         request.html_text, 
         request.media_type, 
         request.media_file_id, 

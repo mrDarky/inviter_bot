@@ -203,7 +203,7 @@ function toggleSelectAll() {
 async function banSelected() {
     const userIds = getSelectedUserIds();
     if (userIds.length === 0) {
-        alert('Please select at least one user');
+        showNotification('Please select at least one user', 'error');
         return;
     }
     
@@ -216,17 +216,17 @@ async function banSelected() {
             body: JSON.stringify(userIds)
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
 async function unbanSelected() {
     const userIds = getSelectedUserIds();
     if (userIds.length === 0) {
-        alert('Please select at least one user');
+        showNotification('Please select at least one user', 'error');
         return;
     }
     
@@ -239,17 +239,17 @@ async function unbanSelected() {
             body: JSON.stringify(userIds)
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
 async function deleteSelected() {
     const userIds = getSelectedUserIds();
     if (userIds.length === 0) {
-        alert('Please select at least one user');
+        showNotification('Please select at least one user', 'error');
         return;
     }
     
@@ -262,10 +262,10 @@ async function deleteSelected() {
             body: JSON.stringify(userIds)
         });
         const data = await response.json();
-        alert(data.message);
-        location.reload();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 
@@ -305,7 +305,7 @@ function escapeHtml(text) {
 async function sendMessage() {
     const userIds = getSelectedUserIds();
     if (userIds.length === 0) {
-        alert('Please select at least one user');
+        showNotification('Please select at least one user', 'error');
         return;
     }
     
@@ -313,7 +313,7 @@ async function sendMessage() {
     const htmlText = document.getElementById('messageHtml').value.trim();
     
     if (!text && !htmlText) {
-        alert('Please enter a message');
+        showNotification('Please enter a message', 'error');
         return;
     }
     
@@ -330,7 +330,7 @@ async function sendMessage() {
             })
         });
         const data = await response.json();
-        alert(data.message);
+        showNotification(data.message, 'success');
         
         // Close modal and reset form
         const modal = bootstrap.Modal.getInstance(document.getElementById('sendMessageModal'));
@@ -339,7 +339,7 @@ async function sendMessage() {
         document.getElementById('messageHtml').value = '';
         document.getElementById('messagePreview').innerHTML = '<em class="text-muted">Preview will appear here...</em>';
     } catch (error) {
-        alert('Error: ' + error);
+        showNotification('Error: ' + error, 'error');
     }
 }
 </script>
