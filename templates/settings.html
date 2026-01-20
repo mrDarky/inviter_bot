@@ -9,6 +9,58 @@
 
 <div class="row">
     <div class="col-md-8">
+        <!-- Bot Token Configuration -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Bot Token Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form id="botTokenForm">
+                    <div class="mb-3">
+                        <label class="form-label">Bot Token</label>
+                        <input type="password" class="form-control" id="botToken" name="bot_token" placeholder="Enter new bot token">
+                        <small class="text-muted">
+                            {% if settings.bot_token_masked %}
+                                Current token: {{ settings.bot_token_masked }}
+                            {% else %}
+                                Using token from environment variables
+                            {% endif %}
+                        </small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Update Bot Token
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Password Change -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Change Admin Password</h5>
+            </div>
+            <div class="card-body">
+                <form id="passwordForm">
+                    <div class="mb-3">
+                        <label class="form-label">Old Password</label>
+                        <input type="password" class="form-control" name="old_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="form-control" name="new_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" class="form-control" id="confirmPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-key"></i> Change Password
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Bot Configuration -->
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">Bot Configuration</h5>
@@ -101,6 +153,68 @@
 
 {% block extra_js %}
 <script>
+// Bot token form
+document.getElementById('botTokenForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const botToken = formData.get('bot_token');
+    
+    if (!botToken) {
+        alert('Please enter a bot token');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/settings/bot-token', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.detail || data.message));
+        }
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+});
+
+// Password change form
+document.getElementById('passwordForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const newPassword = formData.get('new_password');
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (newPassword !== confirmPassword) {
+        alert('New passwords do not match');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/settings/change-password', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(data.message);
+            e.target.reset();
+        } else {
+            alert('Error: ' + (data.detail || data.message));
+        }
+    } catch (error) {
+        alert('Error: ' + error);
+    }
+});
+
+// Settings form
 document.getElementById('settingsForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     

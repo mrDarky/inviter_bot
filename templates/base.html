@@ -77,6 +77,16 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if request.url.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">
+                                <i class="bi bi-file-text"></i> Logs
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.url.path == '/admin/menu-constructor' %}active{% endif %}" href="/admin/menu-constructor">
+                                <i class="bi bi-menu-button-wide"></i> Menu Constructor
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if request.url.path == '/admin/settings' %}active{% endif %}" href="/admin/settings">
                                 <i class="bi bi-gear"></i> Settings
                             </a>
