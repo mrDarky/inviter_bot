@@ -340,7 +340,7 @@ async def settings_page(request: Request):
     if bot_info_str:
         try:
             settings['bot_info'] = json.loads(bot_info_str)
-        except:
+        except (json.JSONDecodeError, TypeError):
             settings['bot_info'] = None
     else:
         settings['bot_info'] = None
@@ -691,6 +691,7 @@ async def check_bot_token(bot_token: str = Form(None), _: None = Depends(require
     if not bot_token:
         raise HTTPException(status_code=400, detail="No bot token provided")
     
+    temp_bot = None
     try:
         # Import Bot from aiogram
         from aiogram import Bot
@@ -700,9 +701,6 @@ async def check_bot_token(bot_token: str = Form(None), _: None = Depends(require
         
         # Get bot information
         bot_info = await temp_bot.get_me()
-        
-        # Close the temporary bot session
-        await temp_bot.session.close()
         
         # Prepare bot info dictionary
         bot_data = {
@@ -727,7 +725,14 @@ async def check_bot_token(bot_token: str = Form(None), _: None = Depends(require
         }
     except Exception as e:
         logger.error(f"Error checking bot token: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid bot token: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid bot token or connection error")
+    finally:
+        # Ensure bot session is always closed
+        if temp_bot:
+            try:
+                await temp_bot.session.close()
+            except Exception:
+                pass
 
 
 # Logs API endpoints

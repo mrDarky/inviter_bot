@@ -267,31 +267,75 @@ document.getElementById('checkBotBtn').addEventListener('click', async function(
         if (response.ok) {
             showNotification(data.message, 'success');
             
-            // Display bot info
+            // Display bot info (using textContent to prevent XSS)
             const botInfo = data.bot_info;
             const botInfoDisplay = document.getElementById('botInfoDisplay');
             botInfoDisplay.style.display = 'block';
-            botInfoDisplay.innerHTML = `
-                <h6 class="mb-2"><i class="bi bi-robot"></i> Bot Information</h6>
-                <div class="row">
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Username:</strong> @${botInfo.bot_username}</p>
-                        <p class="mb-1"><strong>Name:</strong> ${botInfo.bot_first_name}${botInfo.bot_last_name ? ' ' + botInfo.bot_last_name : ''}</p>
-                        <p class="mb-1"><strong>Bot ID:</strong> ${botInfo.bot_id}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Can Join Groups:</strong> 
-                            ${botInfo.can_join_groups ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>'}
-                        </p>
-                        <p class="mb-1"><strong>Can Read Messages:</strong> 
-                            ${botInfo.can_read_all_group_messages ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>'}
-                        </p>
-                        <p class="mb-1"><strong>Inline Queries:</strong> 
-                            ${botInfo.supports_inline_queries ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}
-                        </p>
-                    </div>
-                </div>
-            `;
+            
+            // Create elements safely
+            const container = document.createElement('div');
+            
+            const heading = document.createElement('h6');
+            heading.className = 'mb-2';
+            heading.innerHTML = '<i class="bi bi-robot"></i> Bot Information';
+            container.appendChild(heading);
+            
+            const row = document.createElement('div');
+            row.className = 'row';
+            
+            const col1 = document.createElement('div');
+            col1.className = 'col-md-6';
+            
+            const username = document.createElement('p');
+            username.className = 'mb-1';
+            username.innerHTML = '<strong>Username:</strong> ';
+            const usernameText = document.createTextNode('@' + botInfo.bot_username);
+            username.appendChild(usernameText);
+            col1.appendChild(username);
+            
+            const name = document.createElement('p');
+            name.className = 'mb-1';
+            name.innerHTML = '<strong>Name:</strong> ';
+            const nameText = document.createTextNode(botInfo.bot_first_name + (botInfo.bot_last_name ? ' ' + botInfo.bot_last_name : ''));
+            name.appendChild(nameText);
+            col1.appendChild(name);
+            
+            const id = document.createElement('p');
+            id.className = 'mb-1';
+            id.innerHTML = '<strong>Bot ID:</strong> ';
+            const idText = document.createTextNode(botInfo.bot_id);
+            id.appendChild(idText);
+            col1.appendChild(id);
+            
+            row.appendChild(col1);
+            
+            const col2 = document.createElement('div');
+            col2.className = 'col-md-6';
+            
+            const joinGroups = document.createElement('p');
+            joinGroups.className = 'mb-1';
+            joinGroups.innerHTML = '<strong>Can Join Groups:</strong> ' + 
+                (botInfo.can_join_groups ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>');
+            col2.appendChild(joinGroups);
+            
+            const readMessages = document.createElement('p');
+            readMessages.className = 'mb-1';
+            readMessages.innerHTML = '<strong>Can Read Messages:</strong> ' + 
+                (botInfo.can_read_all_group_messages ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>');
+            col2.appendChild(readMessages);
+            
+            const inlineQueries = document.createElement('p');
+            inlineQueries.className = 'mb-1';
+            inlineQueries.innerHTML = '<strong>Inline Queries:</strong> ' + 
+                (botInfo.supports_inline_queries ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>');
+            col2.appendChild(inlineQueries);
+            
+            row.appendChild(col2);
+            container.appendChild(row);
+            
+            // Clear and set the content
+            botInfoDisplay.innerHTML = '';
+            botInfoDisplay.appendChild(container);
         } else {
             showNotification('Error: ' + (data.detail || data.message), 'error');
         }
