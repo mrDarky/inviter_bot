@@ -143,6 +143,22 @@ class Database:
                 )
             """)
             
+            # Join requests table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS join_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    status TEXT DEFAULT 'pending',
+                    request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_date TIMESTAMP,
+                    UNIQUE(user_id, chat_id)
+                )
+            """)
+            
             # Migration: Add new columns to static_messages if they don't exist
             try:
                 # Check if columns exist
@@ -589,3 +605,100 @@ class Database:
                 WHERE created_at < datetime('now', '-' || ? || ' hours')
             """, (hours,))
             await db.commit()
+    
+    # Join requests operations
+    async def add_join_request(self, user_id: int, chat_id: int, username: str = None, first_name: str = None, last_name: str = None):
+        """Add or update join request"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO join_requests (user_id, chat_id, username, first_name, last_name, status)
+                VALUES (?, ?, ?, ?, ?, 'pending')
+                ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                    username = excluded.username,
+                    first_name = excluded.first_name,
+                    last_name = excluded.last_name,
+                    status = 'pending',
+                    request_date = CURRENT_TIMESTAMP,
+                    processed_date = NULL
+            """, (user_id, chat_id, username, first_name, last_name))
+            await db.commit()
+    
+    async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0):
+        """Get join requests with optional status filter"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT * FROM join_requests WHERE 1=1"
+            params = []
+            
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            
+            query += " ORDER BY request_date DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_join_request_count(self, status: str = 'pending'):
+        """Get total join request count with optional status filter"""
+        async with aiosqlite.connect(self.db_path) as db:
+            query = "SELECT COUNT(*) FROM join_requests WHERE 1=1"
+            params = []
+            
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            
+            async with db.execute(query, params) as cursor:
+                result = await cursor.fetchone()
+                return result[0]
+    
+    async def approve_join_request(self, request_id: int):
+        """Approve a join request"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE join_requests 
+                SET status = 'approved', processed_date = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (request_id,))
+            await db.commit()
+    
+    async def deny_join_request(self, request_id: int):
+        """Deny a join request"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE join_requests 
+                SET status = 'denied', processed_date = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (request_id,))
+            await db.commit()
+    
+    async def approve_all_join_requests(self):
+        """Approve all pending join requests"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE join_requests 
+                SET status = 'approved', processed_date = CURRENT_TIMESTAMP 
+                WHERE status = 'pending'
+            """)
+            await db.commit()
+    
+    async def deny_all_join_requests(self):
+        """Deny all pending join requests"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE join_requests 
+                SET status = 'denied', processed_date = CURRENT_TIMESTAMP 
+                WHERE status = 'pending'
+            """)
+            await db.commit()
+    
+    async def get_join_request_by_id(self, request_id: int):
+        """Get join request by ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM join_requests WHERE id = ?", (request_id,)) as cursor:
+                result = await cursor.fetchone()
+                return dict(result) if result else None
