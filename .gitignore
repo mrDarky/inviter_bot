@@ -32,6 +32,10 @@ wheels/
 *.sqlite3
 data/
 
+# Telegram session files
+*.session
+*.session-journal
+
 # IDE
 .vscode/
 .idea/

@@ -13,6 +13,13 @@ from database import Database
 from passlib.context import CryptContext
 import asyncio
 import logging
+import json
+import shutil
+from pyrogram import Client
+from pyrogram.errors import (
+    SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired,
+    PasswordHashInvalid, FloodWait, BadRequest
+)
 
 # Load environment variables
 load_dotenv()
@@ -31,9 +38,17 @@ logger = logging.getLogger(__name__)
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
+SESSIONS_DIR = os.getenv("SESSIONS_DIR", "./data/sessions")
 
 # Database instance
 db = Database(DATABASE_PATH)
+
+# Create sessions directory
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+# Store active Pyrogram clients and their metadata
+pyrogram_clients = {}
+pyrogram_sessions_metadata = {}
 
 
 class DatabaseLogHandler(logging.Handler):
@@ -95,6 +110,37 @@ class MessageRequest(BaseModel):
     text: str
     html_text: Optional[str] = None
     user_ids: List[int]
+
+
+class PyrogramSendCodeRequest(BaseModel):
+    session_name: str
+    api_id: int
+    api_hash: str
+    phone_number: str
+
+
+class PyrogramVerifyCodeRequest(BaseModel):
+    session_name: str
+    phone_code: str
+    phone_code_hash: str
+
+
+class PyrogramVerifyPasswordRequest(BaseModel):
+    session_name: str
+    password: str
+
+
+class PyrogramCheckSessionRequest(BaseModel):
+    session_name: str
+
+
+class PyrogramLoadRequestsRequest(BaseModel):
+    session_name: str
+    channel_id: str
+
+
+class PyrogramDeleteSessionRequest(BaseModel):
+    session_name: str
 
 
 class ScheduleMessageRequest(BaseModel):
@@ -328,6 +374,16 @@ async def invite_requests_page(request: Request, status: str = 'pending', page: 
         "page": page,
         "total_pages": total_pages,
         "status": status
+    })
+
+
+@app.get("/admin/session-manager", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def session_manager_page(request: Request):
+    """Session manager page for Pyrogram sessions"""
+    sessions = await db.get_pyrogram_sessions()
+    return templates.TemplateResponse("session_manager.html", {
+        "request": request,
+        "sessions": sessions
     })
 
 
@@ -921,6 +977,414 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
     except Exception as e:
         logger.error(f"Error denying all join requests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Pyrogram Session Management API Endpoints
+@app.post("/api/pyrogram/send-code")
+async def pyrogram_send_code(
+    request: PyrogramSendCodeRequest,
+    _: None = Depends(require_auth)
+):
+    """Send verification code to phone number"""
+    try:
+        session_path = os.path.join(SESSIONS_DIR, request.session_name)
+        
+        # Create Pyrogram client
+        client = Client(
+            name=session_path,
+            api_id=request.api_id,
+            api_hash=request.api_hash
+        )
+        
+        # Connect and send code
+        await client.connect()
+        sent_code = await client.send_code(request.phone_number)
+        
+        # Store client and metadata temporarily
+        pyrogram_clients[request.session_name] = client
+        pyrogram_sessions_metadata[request.session_name] = {
+            'phone_number': request.phone_number,
+            'api_id': request.api_id,
+            'api_hash': request.api_hash
+        }
+        
+        return {
+            "status": "success",
+            "phone_code_hash": sent_code.phone_code_hash,
+            "message": "Verification code sent"
+        }
+    except FloodWait as e:
+        return {"status": "error", "message": f"Flood wait: please wait {e.value} seconds"}
+    except Exception as e:
+        logger.error(f"Error sending code: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/verify-code")
+async def pyrogram_verify_code(
+    request: PyrogramVerifyCodeRequest,
+    _: None = Depends(require_auth)
+):
+    """Verify phone code and sign in"""
+    try:
+        client = pyrogram_clients.get(request.session_name)
+        metadata = pyrogram_sessions_metadata.get(request.session_name)
+        
+        if not client or not metadata:
+            return {"status": "error", "message": "Session not found. Please start over."}
+        
+        try:
+            # Sign in with code
+            await client.sign_in(
+                phone_number=metadata['phone_number'],
+                phone_code_hash=request.phone_code_hash,
+                phone_code=request.phone_code
+            )
+            
+            # Get user info
+            me = await client.get_me()
+            user_info = json.dumps({
+                "id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "phone_number": me.phone_number
+            })
+            
+            # Save to database (use upsert pattern)
+            session_data = await db.get_pyrogram_session(request.session_name)
+            if not session_data:
+                try:
+                    await db.add_pyrogram_session(
+                        session_name=request.session_name,
+                        phone_number=metadata['phone_number'],
+                        api_id=metadata['api_id'],
+                        api_hash=metadata['api_hash'],
+                        user_info=user_info
+                    )
+                except Exception as e:
+                    # If race condition occurred, update instead
+                    logger.warning(f"Session might already exist, updating: {e}")
+                    await db.update_pyrogram_session(request.session_name, user_info=user_info, is_active=1)
+            else:
+                await db.update_pyrogram_session(request.session_name, user_info=user_info, is_active=1)
+            
+            # Disconnect client and cleanup
+            await client.disconnect()
+            del pyrogram_clients[request.session_name]
+            del pyrogram_sessions_metadata[request.session_name]
+            
+            return {
+                "status": "success",
+                "requires_password": False,
+                "user_info": user_info,
+                "message": "Successfully authenticated"
+            }
+        except SessionPasswordNeeded:
+            # 2FA is enabled, keep client connected
+            return {
+                "status": "success",
+                "requires_password": True,
+                "message": "Two-factor authentication required"
+            }
+        except PhoneCodeInvalid:
+            return {"status": "error", "message": "Invalid verification code"}
+        except PhoneCodeExpired:
+            return {"status": "error", "message": "Verification code expired. Please start over."}
+    except Exception as e:
+        logger.error(f"Error verifying code: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/verify-password")
+async def pyrogram_verify_password(
+    request: PyrogramVerifyPasswordRequest,
+    _: None = Depends(require_auth)
+):
+    """Verify 2FA password"""
+    try:
+        client = pyrogram_clients.get(request.session_name)
+        metadata = pyrogram_sessions_metadata.get(request.session_name)
+        
+        if not client or not metadata:
+            return {"status": "error", "message": "Session not found. Please start over."}
+        
+        try:
+            # Check password
+            await client.check_password(request.password)
+            
+            # Get user info
+            me = await client.get_me()
+            user_info = json.dumps({
+                "id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "phone_number": me.phone_number
+            })
+            
+            # Save to database (use upsert pattern)
+            session_data = await db.get_pyrogram_session(request.session_name)
+            if not session_data:
+                try:
+                    await db.add_pyrogram_session(
+                        session_name=request.session_name,
+                        phone_number=metadata['phone_number'],
+                        api_id=metadata['api_id'],
+                        api_hash=metadata['api_hash'],
+                        user_info=user_info
+                    )
+                except Exception as e:
+                    # If race condition occurred, update instead
+                    logger.warning(f"Session might already exist, updating: {e}")
+                    await db.update_pyrogram_session(request.session_name, user_info=user_info, is_active=1)
+            else:
+                await db.update_pyrogram_session(request.session_name, user_info=user_info, is_active=1)
+            
+            # Disconnect client and cleanup
+            await client.disconnect()
+            del pyrogram_clients[request.session_name]
+            del pyrogram_sessions_metadata[request.session_name]
+            
+            return {
+                "status": "success",
+                "user_info": user_info,
+                "message": "Successfully authenticated"
+            }
+        except PasswordHashInvalid:
+            return {"status": "error", "message": "Invalid 2FA password"}
+    except Exception as e:
+        logger.error(f"Error verifying password: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/import-session")
+async def pyrogram_import_session(
+    session_name: str = Form(...),
+    api_id: int = Form(...),
+    api_hash: str = Form(...),
+    phone_number: str = Form(...),
+    session_file: UploadFile = File(...),
+    _: None = Depends(require_auth)
+):
+    """Import existing session file"""
+    try:
+        session_path = os.path.join(SESSIONS_DIR, f"{session_name}.session")
+        
+        # Save uploaded file
+        with open(session_path, "wb") as f:
+            shutil.copyfileobj(session_file.file, f)
+        
+        # Verify session by connecting
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, session_name),
+            api_id=api_id,
+            api_hash=api_hash
+        )
+        
+        try:
+            await client.start()
+            me = await client.get_me()
+            
+            user_info = json.dumps({
+                "id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "phone_number": me.phone_number
+            })
+            
+            # Save to database
+            await db.add_pyrogram_session(
+                session_name=session_name,
+                phone_number=phone_number,
+                api_id=api_id,
+                api_hash=api_hash,
+                user_info=user_info
+            )
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "message": "Session imported successfully",
+                "user_info": user_info
+            }
+        except Exception as e:
+            # Remove invalid session file
+            if os.path.exists(session_path):
+                os.remove(session_path)
+            raise e
+    except Exception as e:
+        logger.error(f"Error importing session: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/check-session")
+async def pyrogram_check_session(
+    request: PyrogramCheckSessionRequest,
+    _: None = Depends(require_auth)
+):
+    """Check if session is valid and get user info"""
+    try:
+        session_data = await db.get_pyrogram_session(request.session_name)
+        if not session_data:
+            return {"status": "error", "message": "Session not found in database"}
+        
+        session_path = os.path.join(SESSIONS_DIR, request.session_name)
+        
+        # Create client and check
+        client = Client(
+            name=session_path,
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            me = await client.get_me()
+            
+            user_info = json.dumps({
+                "id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "phone_number": me.phone_number
+            })
+            
+            # Update database
+            await db.update_pyrogram_session(request.session_name, user_info=user_info, is_active=1)
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "user_info": user_info,
+                "message": "Session is active"
+            }
+        except Exception as e:
+            await db.update_pyrogram_session(request.session_name, is_active=0)
+            return {"status": "error", "message": f"Session is invalid: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Error checking session: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/load-requests")
+async def pyrogram_load_requests(
+    request: PyrogramLoadRequestsRequest,
+    _: None = Depends(require_auth)
+):
+    """Load join requests from a channel"""
+    try:
+        session_data = await db.get_pyrogram_session(request.session_name)
+        if not session_data:
+            return {"status": "error", "message": "Session not found"}
+        
+        session_path = os.path.join(SESSIONS_DIR, request.session_name)
+        
+        # Create client
+        client = Client(
+            name=session_path,
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Get chat
+            try:
+                chat = await client.get_chat(request.channel_id)
+            except BadRequest:
+                await client.stop()
+                return {"status": "error", "message": "Invalid channel ID or username"}
+            
+            # Check if user has permission
+            try:
+                member = await client.get_chat_member(chat.id, "me")
+                if not member.privileges or not member.privileges.can_invite_users:
+                    await client.stop()
+                    return {"status": "error", "message": "You don't have permission to view join requests in this channel"}
+            except Exception as e:
+                await client.stop()
+                return {"status": "error", "message": f"Cannot check permissions: {str(e)}"}
+            
+            # Get join requests with batch processing
+            count = 0
+            batch_size = 100
+            batch = []
+            
+            async for req in client.get_chat_join_requests(chat.id, limit=1000):  # Limit to 1000 total
+                try:
+                    batch.append({
+                        'user_id': req.user.id,
+                        'chat_id': chat.id,
+                        'username': req.user.username,
+                        'first_name': req.user.first_name,
+                        'last_name': req.user.last_name
+                    })
+                    
+                    # Process in batches
+                    if len(batch) >= batch_size:
+                        for item in batch:
+                            try:
+                                await db.add_join_request(**item)
+                                count += 1
+                            except Exception:
+                                # Skip if already exists
+                                pass
+                        batch = []
+                except Exception as e:
+                    logger.debug(f"Skipping request: {e}")
+                    continue
+            
+            # Process remaining items
+            for item in batch:
+                try:
+                    await db.add_join_request(**item)
+                    count += 1
+                except Exception:
+                    # Skip if already exists
+                    pass
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "count": count,
+                "message": f"Loaded {count} join requests"
+            }
+        except FloodWait as e:
+            await client.stop()
+            return {"status": "error", "message": f"Flood wait: please wait {e.value} seconds"}
+        except Exception as e:
+            await client.stop()
+            raise e
+    except Exception as e:
+        logger.error(f"Error loading requests: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/delete-session")
+async def pyrogram_delete_session(
+    request: PyrogramDeleteSessionRequest,
+    _: None = Depends(require_auth)
+):
+    """Delete a Pyrogram session"""
+    try:
+        # Delete from database
+        await db.delete_pyrogram_session(request.session_name)
+        
+        # Delete session file
+        session_path = os.path.join(SESSIONS_DIR, f"{request.session_name}.session")
+        if os.path.exists(session_path):
+            os.remove(session_path)
+        
+        return {"status": "success", "message": "Session deleted"}
+    except Exception as e:
+        logger.error(f"Error deleting session: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":

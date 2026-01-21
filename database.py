@@ -165,6 +165,21 @@ class Database:
                 ON join_requests(status)
             """)
             
+            # Pyrogram sessions table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS pyrogram_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_name TEXT UNIQUE NOT NULL,
+                    phone_number TEXT NOT NULL,
+                    api_id INTEGER NOT NULL,
+                    api_hash TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    last_check TIMESTAMP,
+                    user_info TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Migration: Add new columns to static_messages if they don't exist
             try:
                 # Check if columns exist
@@ -708,3 +723,52 @@ class Database:
             async with db.execute("SELECT * FROM join_requests WHERE id = ?", (request_id,)) as cursor:
                 result = await cursor.fetchone()
                 return dict(result) if result else None
+    
+    # Pyrogram sessions methods
+    async def add_pyrogram_session(self, session_name: str, phone_number: str, api_id: int, api_hash: str, user_info: str = None):
+        """Add a new Pyrogram session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO pyrogram_sessions (session_name, phone_number, api_id, api_hash, user_info, last_check)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (session_name, phone_number, api_id, api_hash, user_info))
+            await db.commit()
+    
+    async def get_pyrogram_sessions(self):
+        """Get all Pyrogram sessions"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM pyrogram_sessions ORDER BY created_at DESC") as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_pyrogram_session(self, session_name: str):
+        """Get a specific Pyrogram session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM pyrogram_sessions WHERE session_name = ?", (session_name,)) as cursor:
+                result = await cursor.fetchone()
+                return dict(result) if result else None
+    
+    async def update_pyrogram_session(self, session_name: str, user_info: str = None, is_active: int = None):
+        """Update a Pyrogram session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            if user_info is not None:
+                await db.execute("""
+                    UPDATE pyrogram_sessions 
+                    SET user_info = ?, last_check = CURRENT_TIMESTAMP
+                    WHERE session_name = ?
+                """, (user_info, session_name))
+            if is_active is not None:
+                await db.execute("""
+                    UPDATE pyrogram_sessions 
+                    SET is_active = ?, last_check = CURRENT_TIMESTAMP
+                    WHERE session_name = ?
+                """, (is_active, session_name))
+            await db.commit()
+    
+    async def delete_pyrogram_session(self, session_name: str):
+        """Delete a Pyrogram session"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM pyrogram_sessions WHERE session_name = ?", (session_name,))
+            await db.commit()
