@@ -312,6 +312,25 @@ async def menu_constructor_page(request: Request):
     })
 
 
+@app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def invite_requests_page(request: Request, status: str = 'pending', page: int = 1):
+    """Invite requests page"""
+    limit = 20
+    offset = (page - 1) * limit
+    
+    requests = await db.get_join_requests(status=status, limit=limit, offset=offset)
+    total = await db.get_join_request_count(status=status)
+    total_pages = (total + limit - 1) // limit
+    
+    return templates.TemplateResponse("invite_requests.html", {
+        "request": request,
+        "requests": requests,
+        "page": page,
+        "total_pages": total_pages,
+        "status": status
+    })
+
+
 # API endpoints
 @app.post("/api/users/ban")
 async def ban_users(user_ids: List[int], _: None = Depends(require_auth)):
@@ -667,6 +686,241 @@ async def toggle_menu_item(menu_id: int, _: None = Depends(require_auth)):
     logger.info(f"Toggling menu item: {menu_id}")
     await db.toggle_bot_menu_item(menu_id)
     return {"status": "success", "message": "Menu item toggled"}
+
+
+# Invite requests API endpoints
+@app.post("/api/invite-requests/approve")
+async def approve_join_requests(request_ids: List[int], _: None = Depends(require_auth)):
+    """Approve selected join requests"""
+    try:
+        from aiogram import Bot
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        success_count = 0
+        fail_count = 0
+        
+        for request_id in request_ids:
+            try:
+                # Get request details
+                join_request = await db.get_join_request_by_id(request_id)
+                if not join_request or join_request['status'] != 'pending':
+                    fail_count += 1
+                    continue
+                
+                # Approve the join request
+                await bot_instance.approve_chat_join_request(
+                    chat_id=join_request['chat_id'],
+                    user_id=join_request['user_id']
+                )
+                
+                # Update database
+                await db.approve_join_request(request_id)
+                await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Error approving join request {request_id}: {e}")
+                fail_count += 1
+        
+        await bot_instance.session.close()
+        
+        return {
+            "status": "success",
+            "message": f"Approved {success_count} requests, failed for {fail_count} requests",
+            "success_count": success_count,
+            "fail_count": fail_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving join requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/invite-requests/deny")
+async def deny_join_requests(request_ids: List[int], _: None = Depends(require_auth)):
+    """Deny selected join requests"""
+    try:
+        from aiogram import Bot
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        success_count = 0
+        fail_count = 0
+        
+        for request_id in request_ids:
+            try:
+                # Get request details
+                join_request = await db.get_join_request_by_id(request_id)
+                if not join_request or join_request['status'] != 'pending':
+                    fail_count += 1
+                    continue
+                
+                # Deny the join request
+                await bot_instance.decline_chat_join_request(
+                    chat_id=join_request['chat_id'],
+                    user_id=join_request['user_id']
+                )
+                
+                # Update database
+                await db.deny_join_request(request_id)
+                await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Error denying join request {request_id}: {e}")
+                fail_count += 1
+        
+        await bot_instance.session.close()
+        
+        return {
+            "status": "success",
+            "message": f"Denied {success_count} requests, failed for {fail_count} requests",
+            "success_count": success_count,
+            "fail_count": fail_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error denying join requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/invite-requests/approve-all")
+async def approve_all_join_requests(_: None = Depends(require_auth)):
+    """Approve all pending join requests"""
+    try:
+        from aiogram import Bot
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        # Get all pending requests with batching
+        success_count = 0
+        fail_count = 0
+        batch_size = 100
+        offset = 0
+        
+        while True:
+            pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+            if not pending_requests:
+                break
+            
+            for join_request in pending_requests:
+                try:
+                    # Approve the join request
+                    await bot_instance.approve_chat_join_request(
+                        chat_id=join_request['chat_id'],
+                        user_id=join_request['user_id']
+                    )
+                    
+                    # Update database
+                    await db.approve_join_request(join_request['id'])
+                    await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error approving join request {join_request['id']}: {e}")
+                    fail_count += 1
+            
+            # Move to next batch
+            offset += batch_size
+        
+        await bot_instance.session.close()
+        
+        return {
+            "status": "success",
+            "message": f"Approved {success_count} requests, failed for {fail_count} requests",
+            "success_count": success_count,
+            "fail_count": fail_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving all join requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/invite-requests/deny-all")
+async def deny_all_join_requests(_: None = Depends(require_auth)):
+    """Deny all pending join requests"""
+    try:
+        from aiogram import Bot
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        # Get all pending requests with batching
+        success_count = 0
+        fail_count = 0
+        batch_size = 100
+        offset = 0
+        
+        while True:
+            pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+            if not pending_requests:
+                break
+            
+            for join_request in pending_requests:
+                try:
+                    # Deny the join request
+                    await bot_instance.decline_chat_join_request(
+                        chat_id=join_request['chat_id'],
+                        user_id=join_request['user_id']
+                    )
+                    
+                    # Update database
+                    await db.deny_join_request(join_request['id'])
+                    await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error denying join request {join_request['id']}: {e}")
+                    fail_count += 1
+            
+            # Move to next batch
+            offset += batch_size
+        
+        await bot_instance.session.close()
+        
+        return {
+            "status": "success",
+            "message": f"Denied {success_count} requests, failed for {fail_count} requests",
+            "success_count": success_count,
+            "fail_count": fail_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error denying all join requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

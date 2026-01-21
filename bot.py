@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
-from aiogram.types import ChatMemberUpdated, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ChatMemberUpdated, ChatJoinRequest, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -220,6 +220,27 @@ async def on_user_leave(event: ChatMemberUpdated):
     await db.log_action(user.id, "leave_channel", f"Left channel: {event.chat.title}")
     
     logger.info(f"User {user.id} ({user.username}) left channel {event.chat.title}")
+
+
+@dp.chat_join_request()
+async def on_join_request(update: ChatJoinRequest):
+    """Handle join request to a channel"""
+    user = update.from_user
+    chat = update.chat
+    
+    # Store join request in database
+    await db.add_join_request(
+        user_id=user.id,
+        chat_id=chat.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
+    
+    # Log action
+    await db.log_action(user.id, "join_request", f"Join request for channel: {chat.title}")
+    
+    logger.info(f"User {user.id} ({user.username}) requested to join channel {chat.title}")
 
 
 async def send_message_to_users(user_ids: list, text: str, parse_mode: str = None):

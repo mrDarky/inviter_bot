@@ -68,6 +68,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if request.url.path == '/admin/invite-requests' %}active{% endif %}" href="/admin/invite-requests">
+                                <i class="bi bi-person-plus"></i> Invite Requests
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if request.url.path == '/admin/statistics' %}active{% endif %}" href="/admin/statistics">
                                 <i class="bi bi-graph-up"></i> Statistics
                             </a>
