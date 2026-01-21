@@ -30,7 +30,51 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-save"></i> Update Bot Token
                     </button>
+                    <button type="button" class="btn btn-info" id="checkBotBtn">
+                        <i class="bi bi-check-circle"></i> Check Bot
+                    </button>
                 </form>
+                
+                <!-- Bot Info Display -->
+                {% if settings.bot_info %}
+                <div class="mt-3 p-3 bg-light border rounded" id="botInfoDisplay">
+                    <h6 class="mb-2"><i class="bi bi-robot"></i> Bot Information</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Username:</strong> @{{ settings.bot_info.bot_username }}</p>
+                            <p class="mb-1"><strong>Name:</strong> {{ settings.bot_info.bot_first_name }}</p>
+                            <p class="mb-1"><strong>Bot ID:</strong> {{ settings.bot_info.bot_id }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Can Join Groups:</strong> 
+                                {% if settings.bot_info.can_join_groups %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </p>
+                            <p class="mb-1"><strong>Can Read Messages:</strong> 
+                                {% if settings.bot_info.can_read_all_group_messages %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </p>
+                            <p class="mb-1"><strong>Inline Queries:</strong> 
+                                {% if settings.bot_info.supports_inline_queries %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="mt-3 p-3 bg-light border rounded" id="botInfoDisplay" style="display: none;">
+                    <!-- Bot info will be displayed here after check -->
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -192,6 +236,71 @@ document.getElementById('botTokenForm').addEventListener('submit', async functio
         }
     } catch (error) {
         showNotification('Error: ' + error, 'error');
+    }
+});
+
+// Check Bot button handler
+document.getElementById('checkBotBtn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    
+    const botToken = document.getElementById('botToken').value;
+    const formData = new FormData();
+    
+    // Only include token if one was entered in the form
+    if (botToken) {
+        formData.append('bot_token', botToken);
+    }
+    
+    // Disable button and show loading state
+    const btn = e.target;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Checking...';
+    
+    try {
+        const response = await fetch('/api/settings/check-bot', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+            showNotification(data.message, 'success');
+            
+            // Display bot info
+            const botInfo = data.bot_info;
+            const botInfoDisplay = document.getElementById('botInfoDisplay');
+            botInfoDisplay.style.display = 'block';
+            botInfoDisplay.innerHTML = `
+                <h6 class="mb-2"><i class="bi bi-robot"></i> Bot Information</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Username:</strong> @${botInfo.bot_username}</p>
+                        <p class="mb-1"><strong>Name:</strong> ${botInfo.bot_first_name}${botInfo.bot_last_name ? ' ' + botInfo.bot_last_name : ''}</p>
+                        <p class="mb-1"><strong>Bot ID:</strong> ${botInfo.bot_id}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Can Join Groups:</strong> 
+                            ${botInfo.can_join_groups ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>'}
+                        </p>
+                        <p class="mb-1"><strong>Can Read Messages:</strong> 
+                            ${botInfo.can_read_all_group_messages ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>'}
+                        </p>
+                        <p class="mb-1"><strong>Inline Queries:</strong> 
+                            ${botInfo.supports_inline_queries ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}
+                        </p>
+                    </div>
+                </div>
+            `;
+        } else {
+            showNotification('Error: ' + (data.detail || data.message), 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    } finally {
+        // Restore button state
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 });
 
