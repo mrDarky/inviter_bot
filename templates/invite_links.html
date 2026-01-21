@@ -68,7 +68,9 @@
                                     <i class="bi bi-toggle-on"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-danger" 
-                                        onclick="deleteLink({{ link.id }}, '{{ link.name }}')" 
+                                        data-link-id="{{ link.id }}" 
+                                        data-link-name="{{ link.name }}"
+                                        onclick="deleteLink(this)" 
                                         title="Delete link">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -208,7 +210,10 @@ async function toggleLink(linkId) {
     }
 }
 
-async function deleteLink(linkId, linkName) {
+async function deleteLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const linkName = button.getAttribute('data-link-name');
+    
     if (!confirm(`Delete invite link "${linkName}"?\n\nThis will not affect existing users who joined through this link.`)) {
         return;
     }
@@ -232,6 +237,22 @@ async function deleteLink(linkId, linkName) {
 
 function copyToClipboard(inputId) {
     const input = document.getElementById(inputId);
+    
+    // Use modern clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            showNotification('Link copied to clipboard!', 'success');
+        }).catch(() => {
+            // Fallback to legacy method
+            copyToClipboardLegacy(input);
+        });
+    } else {
+        // Fallback for older browsers
+        copyToClipboardLegacy(input);
+    }
+}
+
+function copyToClipboardLegacy(input) {
     input.select();
     input.setSelectionRange(0, 99999); // For mobile devices
     
@@ -239,12 +260,7 @@ function copyToClipboard(inputId) {
         document.execCommand('copy');
         showNotification('Link copied to clipboard!', 'success');
     } catch (err) {
-        // Fallback for modern browsers
-        navigator.clipboard.writeText(input.value).then(() => {
-            showNotification('Link copied to clipboard!', 'success');
-        }).catch(() => {
-            showNotification('Failed to copy link', 'error');
-        });
+        showNotification('Failed to copy link', 'error');
     }
 }
 </script>

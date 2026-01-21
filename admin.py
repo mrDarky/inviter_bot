@@ -40,6 +40,9 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./data/bot.db")
 SESSIONS_DIR = os.getenv("SESSIONS_DIR", "./data/sessions")
 
+# Regex pattern for invite link code validation
+INVITE_CODE_PATTERN = r'^[a-zA-Z0-9_-]+$'
+
 # Database instance
 db = Database(DATABASE_PATH)
 
@@ -1490,7 +1493,7 @@ async def create_invite_link(code: str = Form(...), name: str = Form(...), _: No
     try:
         # Validate code format (alphanumeric and underscores only)
         import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', code):
+        if not re.match(INVITE_CODE_PATTERN, code):
             return {"status": "error", "message": "Code can only contain letters, numbers, hyphens, and underscores"}
         
         # Check if code already exists

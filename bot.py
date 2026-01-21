@@ -166,6 +166,7 @@ async def cmd_start(message: types.Message):
         # Validate invite code exists and is active
         invite_link = await db.get_invite_link_by_code(invite_code)
         if not invite_link or not invite_link.get('is_active'):
+            logger.warning(f"User {user.id} tried to use invalid or inactive invite code: {invite_code}")
             invite_code = None
     
     # Add user to database
