@@ -73,6 +73,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if request.url.path == '/admin/invite-links' %}active{% endif %}" href="/admin/invite-links">
+                                <i class="bi bi-link-45deg"></i> Invite Links
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if request.url.path == '/admin/session-manager' %}active{% endif %}" href="/admin/session-manager">
                                 <i class="bi bi-person-badge"></i> Session Manager
                             </a>

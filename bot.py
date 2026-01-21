@@ -158,17 +158,30 @@ async def cmd_start(message: types.Message):
     """Handle /start command"""
     user = message.from_user
     
+    # Extract invite code from deep link if present
+    # Format: /start CODE or /start (no code)
+    invite_code = None
+    if message.text and len(message.text.split()) > 1:
+        invite_code = message.text.split()[1]
+        # Validate invite code exists and is active
+        invite_link = await db.get_invite_link_by_code(invite_code)
+        if not invite_link or not invite_link.get('is_active'):
+            logger.warning(f"User {user.id} tried to use invalid or inactive invite code: {invite_code}")
+            invite_code = None
+    
     # Add user to database
     await db.add_user(
         user_id=user.id,
         username=user.username,
         first_name=user.first_name,
-        last_name=user.last_name
+        last_name=user.last_name,
+        invite_code=invite_code
     )
     
     # Log action
-    await db.log_action(user.id, "start", "User started the bot")
-    logger.info(f"User {user.id} started the bot")
+    action_data = f"Invite code: {invite_code}" if invite_code else "No invite code"
+    await db.log_action(user.id, "start", action_data)
+    logger.info(f"User {user.id} started the bot with invite code: {invite_code}")
     
     # Build main menu
     menu = await build_main_menu()

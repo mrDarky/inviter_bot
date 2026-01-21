@@ -180,6 +180,17 @@ class Database:
                 )
             """)
             
+            # Invite links table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS invite_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Migration: Add new columns to static_messages if they don't exist
             try:
                 # Check if columns exist
@@ -203,21 +214,34 @@ class Database:
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Migration warning (may be expected if columns already exist): {e}")
             
+            # Migration: Add invite_code column to users table if it doesn't exist
+            try:
+                async with db.execute("PRAGMA table_info(users)") as cursor:
+                    columns = await cursor.fetchall()
+                    column_names = [col[1] for col in columns]
+                    
+                    if 'invite_code' not in column_names:
+                        await db.execute("ALTER TABLE users ADD COLUMN invite_code TEXT")
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Migration warning for users table: {e}")
+            
             await db.commit()
     
     # User operations
-    async def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
+    async def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None, invite_code: str = None):
         """Add or update user"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT INTO users (user_id, username, first_name, last_name)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO users (user_id, username, first_name, last_name, invite_code)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     username = excluded.username,
                     first_name = excluded.first_name,
                     last_name = excluded.last_name,
                     last_activity = CURRENT_TIMESTAMP
-            """, (user_id, username, first_name, last_name))
+            """, (user_id, username, first_name, last_name, invite_code))
             await db.commit()
     
     async def get_users(self, search: str = None, is_banned: int = None, limit: int = 100, offset: int = 0):
@@ -771,4 +795,60 @@ class Database:
         """Delete a Pyrogram session"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM pyrogram_sessions WHERE session_name = ?", (session_name,))
+            await db.commit()
+    
+    # Invite links operations
+    async def create_invite_link(self, code: str, name: str):
+        """Create a new invite link"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO invite_links (code, name, is_active)
+                VALUES (?, ?, 1)
+            """, (code, name))
+            await db.commit()
+    
+    async def get_invite_links(self):
+        """Get all invite links with usage statistics"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT 
+                    il.id,
+                    il.code,
+                    il.name,
+                    il.is_active,
+                    il.created_at,
+                    COUNT(u.id) as user_count
+                FROM invite_links il
+                LEFT JOIN users u ON u.invite_code = il.code
+                GROUP BY il.id
+                ORDER BY il.created_at DESC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_invite_link_by_code(self, code: str):
+        """Get invite link by code"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM invite_links WHERE code = ?
+            """, (code,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def delete_invite_link(self, link_id: int):
+        """Delete an invite link"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM invite_links WHERE id = ?", (link_id,))
+            await db.commit()
+    
+    async def toggle_invite_link(self, link_id: int):
+        """Toggle invite link active status"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE invite_links 
+                SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+                WHERE id = ?
+            """, (link_id,))
             await db.commit()
