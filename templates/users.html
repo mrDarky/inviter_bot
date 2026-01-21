@@ -71,6 +71,7 @@
                         <th>User</th>
                         <th>Username</th>
                         <th>User ID</th>
+                        <th>Invite Source</th>
                         <th>Join Date</th>
                         <th>Last Activity</th>
                         <th>Status</th>
@@ -94,6 +95,13 @@
                         </td>
                         <td>{{ '@' + user.username if user.username else '-' }}</td>
                         <td><code>{{ user.user_id }}</code></td>
+                        <td>
+                            {% if user.invite_code %}
+                            <span class="badge bg-info">{{ user.invite_code }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>{{ user.join_date[:10] }}</td>
                         <td>{{ user.last_activity[:10] }}</td>
                         <td>

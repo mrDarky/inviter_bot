@@ -400,6 +400,31 @@ async def session_manager_page(request: Request):
     })
 
 
+@app.get("/admin/invite-links", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def invite_links_page(request: Request):
+    """Invite links management page"""
+    invite_links = await db.get_invite_links()
+    
+    # Get bot username to construct full invite links
+    bot_username = await db.get_setting('bot_username')
+    if not bot_username:
+        # Try to get bot info
+        try:
+            from bot import bot
+            if bot:
+                bot_info = await bot.get_me()
+                bot_username = bot_info.username
+                await db.save_setting('bot_username', bot_username)
+        except:
+            bot_username = "YourBot"
+    
+    return templates.TemplateResponse("invite_links.html", {
+        "request": request,
+        "invite_links": invite_links,
+        "bot_username": bot_username
+    })
+
+
 # API endpoints
 @app.post("/api/users/ban")
 async def ban_users(user_ids: List[int], _: None = Depends(require_auth)):
@@ -1455,6 +1480,50 @@ async def pyrogram_delete_session(
         return {"status": "success", "message": "Session deleted"}
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+# Invite Links API endpoints
+@app.post("/api/invite-links/create")
+async def create_invite_link(code: str = Form(...), name: str = Form(...), _: None = Depends(require_auth)):
+    """Create a new invite link"""
+    try:
+        # Validate code format (alphanumeric and underscores only)
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', code):
+            return {"status": "error", "message": "Code can only contain letters, numbers, hyphens, and underscores"}
+        
+        # Check if code already exists
+        existing = await db.get_invite_link_by_code(code)
+        if existing:
+            return {"status": "error", "message": "This code already exists"}
+        
+        await db.create_invite_link(code, name)
+        return {"status": "success", "message": f"Invite link '{name}' created successfully"}
+    except Exception as e:
+        logger.error(f"Error creating invite link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.delete("/api/invite-links/{link_id}")
+async def delete_invite_link(link_id: int, _: None = Depends(require_auth)):
+    """Delete an invite link"""
+    try:
+        await db.delete_invite_link(link_id)
+        return {"status": "success", "message": "Invite link deleted"}
+    except Exception as e:
+        logger.error(f"Error deleting invite link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/invite-links/{link_id}/toggle")
+async def toggle_invite_link(link_id: int, _: None = Depends(require_auth)):
+    """Toggle invite link active status"""
+    try:
+        await db.toggle_invite_link(link_id)
+        return {"status": "success", "message": "Invite link status toggled"}
+    except Exception as e:
+        logger.error(f"Error toggling invite link: {e}")
         return {"status": "error", "message": str(e)}
 
 
