@@ -381,9 +381,11 @@ async def invite_requests_page(request: Request, status: str = 'pending', page: 
 async def session_manager_page(request: Request):
     """Session manager page for Pyrogram sessions"""
     sessions = await db.get_pyrogram_sessions()
+    settings = await db.get_all_settings()
     return templates.TemplateResponse("session_manager.html", {
         "request": request,
-        "sessions": sessions
+        "sessions": sessions,
+        "settings": settings
     })
 
 

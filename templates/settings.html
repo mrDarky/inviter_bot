@@ -79,6 +79,18 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label class="form-label">Default API ID</label>
+                        <input type="number" class="form-control" name="default_api_id" value="{{ settings.default_api_id or '' }}" placeholder="12345678" min="1">
+                        <small class="text-muted">Default Telegram API ID for session manager (get from <a href="https://my.telegram.org" target="_blank">my.telegram.org</a>)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Default API Hash</label>
+                        <input type="text" class="form-control" name="default_api_hash" value="{{ settings.default_api_hash or '' }}" placeholder="abcdef1234567890" pattern="[a-fA-F0-9]{32}" minlength="32" maxlength="32">
+                        <small class="text-muted">Default Telegram API Hash for session manager (get from <a href="https://my.telegram.org" target="_blank">my.telegram.org</a>)</small>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label class="form-label">Daily Message Time</label>
                         <input type="time" class="form-control" name="daily_message_time" value="{{ settings.daily_message_time or '09:00' }}">
                         <small class="text-muted">Time to send daily static messages (24-hour format)</small>
