@@ -817,27 +817,35 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
         
         bot_instance = Bot(token=bot_token)
         
-        # Get all pending requests
-        pending_requests = await db.get_join_requests(status='pending', limit=10000)
-        
+        # Get all pending requests with batching
         success_count = 0
         fail_count = 0
+        batch_size = 100
+        offset = 0
         
-        for join_request in pending_requests:
-            try:
-                # Approve the join request
-                await bot_instance.approve_chat_join_request(
-                    chat_id=join_request['chat_id'],
-                    user_id=join_request['user_id']
-                )
-                
-                # Update database
-                await db.approve_join_request(join_request['id'])
-                await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
-                success_count += 1
-            except Exception as e:
-                logger.error(f"Error approving join request {join_request['id']}: {e}")
-                fail_count += 1
+        while True:
+            pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+            if not pending_requests:
+                break
+            
+            for join_request in pending_requests:
+                try:
+                    # Approve the join request
+                    await bot_instance.approve_chat_join_request(
+                        chat_id=join_request['chat_id'],
+                        user_id=join_request['user_id']
+                    )
+                    
+                    # Update database
+                    await db.approve_join_request(join_request['id'])
+                    await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error approving join request {join_request['id']}: {e}")
+                    fail_count += 1
+            
+            # Move to next batch
+            offset += batch_size
         
         await bot_instance.session.close()
         
@@ -870,27 +878,35 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
         
         bot_instance = Bot(token=bot_token)
         
-        # Get all pending requests
-        pending_requests = await db.get_join_requests(status='pending', limit=10000)
-        
+        # Get all pending requests with batching
         success_count = 0
         fail_count = 0
+        batch_size = 100
+        offset = 0
         
-        for join_request in pending_requests:
-            try:
-                # Deny the join request
-                await bot_instance.decline_chat_join_request(
-                    chat_id=join_request['chat_id'],
-                    user_id=join_request['user_id']
-                )
-                
-                # Update database
-                await db.deny_join_request(join_request['id'])
-                await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
-                success_count += 1
-            except Exception as e:
-                logger.error(f"Error denying join request {join_request['id']}: {e}")
-                fail_count += 1
+        while True:
+            pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+            if not pending_requests:
+                break
+            
+            for join_request in pending_requests:
+                try:
+                    # Deny the join request
+                    await bot_instance.decline_chat_join_request(
+                        chat_id=join_request['chat_id'],
+                        user_id=join_request['user_id']
+                    )
+                    
+                    # Update database
+                    await db.deny_join_request(join_request['id'])
+                    await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error denying join request {join_request['id']}: {e}")
+                    fail_count += 1
+            
+            # Move to next batch
+            offset += batch_size
         
         await bot_instance.session.close()
         

@@ -159,6 +159,12 @@ class Database:
                 )
             """)
             
+            # Create index on status column for better query performance
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_join_requests_status 
+                ON join_requests(status)
+            """)
+            
             # Migration: Add new columns to static_messages if they don't exist
             try:
                 # Check if columns exist
