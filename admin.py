@@ -334,6 +334,17 @@ async def settings_page(request: Request):
         settings['bot_token_masked'] = bot_token[:10] + '...' + bot_token[-10:] if len(bot_token) > 20 else '***'
     else:
         settings['bot_token_masked'] = ''
+    
+    # Parse bot info if available
+    bot_info_str = settings.get('bot_info')
+    if bot_info_str:
+        try:
+            settings['bot_info'] = json.loads(bot_info_str)
+        except (json.JSONDecodeError, TypeError):
+            settings['bot_info'] = None
+    else:
+        settings['bot_info'] = None
+    
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "settings": settings
@@ -664,6 +675,64 @@ async def update_bot_token(bot_token: str = Form(...), _: None = Depends(require
     logger.info("Updating bot token")
     await db.set_setting('bot_token', bot_token)
     return {"status": "success", "message": "Bot token updated successfully"}
+
+
+@app.post("/api/settings/check-bot")
+async def check_bot_token(bot_token: str = Form(None), _: None = Depends(require_auth)):
+    """Check bot token and retrieve bot information"""
+    logger.info("Checking bot token")
+    
+    # Get token from form or from database
+    if not bot_token:
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv("BOT_TOKEN")
+    
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="No bot token provided")
+    
+    temp_bot = None
+    try:
+        # Import Bot from aiogram
+        from aiogram import Bot
+        
+        # Create temporary bot instance
+        temp_bot = Bot(token=bot_token)
+        
+        # Get bot information
+        bot_info = await temp_bot.get_me()
+        
+        # Prepare bot info dictionary
+        bot_data = {
+            "bot_id": bot_info.id,
+            "bot_username": bot_info.username,
+            "bot_first_name": bot_info.first_name,
+            "bot_last_name": bot_info.last_name or "",
+            "can_join_groups": bot_info.can_join_groups,
+            "can_read_all_group_messages": bot_info.can_read_all_group_messages,
+            "supports_inline_queries": bot_info.supports_inline_queries
+        }
+        
+        # Save bot info to database settings
+        await db.set_setting('bot_info', json.dumps(bot_data))
+        
+        logger.info(f"Bot info retrieved: @{bot_info.username}")
+        
+        return {
+            "status": "success",
+            "message": "Bot verified successfully",
+            "bot_info": bot_data
+        }
+    except Exception as e:
+        logger.error(f"Error checking bot token: {e}")
+        raise HTTPException(status_code=400, detail="Invalid bot token or connection error")
+    finally:
+        # Ensure bot session is always closed
+        if temp_bot:
+            try:
+                await temp_bot.session.close()
+            except Exception:
+                pass
 
 
 # Logs API endpoints
