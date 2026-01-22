@@ -104,7 +104,7 @@
                                         data-link-name="{{ link.name }}"
                                         data-expire-date="{{ link.expire_date or '' }}"
                                         data-member-limit="{{ link.member_limit or '' }}"
-                                        data-creates-join-request="{{ link.creates_join_request }}"
+                                        data-creates-join-request="{{ 'true' if link.creates_join_request else 'false' }}"
                                         onclick="showEditModal(this)" 
                                         title="Edit">
                                     <i class="bi bi-pencil"></i>
@@ -382,7 +382,7 @@ function showEditModal(button) {
     const name = button.getAttribute('data-link-name');
     const expireDate = button.getAttribute('data-expire-date');
     const memberLimit = button.getAttribute('data-member-limit');
-    const createsJoinRequest = button.getAttribute('data-creates-join-request') === '1';
+    const createsJoinRequest = button.getAttribute('data-creates-join-request') === 'true';
     
     document.getElementById('editLinkId').value = linkId;
     document.getElementById('editLinkName').value = name;

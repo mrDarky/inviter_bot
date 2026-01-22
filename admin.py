@@ -20,6 +20,7 @@ from pyrogram.errors import (
     SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired,
     PasswordHashInvalid, FloodWait, BadRequest
 )
+from pyrogram.enums import ChatMemberStatus
 
 # Load environment variables
 load_dotenv()
@@ -1578,7 +1579,7 @@ async def get_user_channels(session_name: str = Form(...), _: None = Depends(req
                     try:
                         # Check if user has rights to create invite links
                         member = await client.get_chat_member(chat.id, "me")
-                        if member.privileges and (member.privileges.can_invite_users or member.status == "creator"):
+                        if member.privileges and (member.privileges.can_invite_users or member.status == ChatMemberStatus.OWNER):
                             channels.append({
                                 "id": chat.id,
                                 "title": chat.title,
