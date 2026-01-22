@@ -1542,18 +1542,19 @@ async def pyrogram_create_bot_session(
         await client.start()
         me = await client.get_me()
         
-        # Create user_info JSON
+        # Create user_info JSON with null checks
+        username = me.username or f"bot_{me.id}"
         user_info = json.dumps({
             "id": me.id,
-            "username": me.username,
-            "first_name": me.first_name,
+            "username": username,
+            "first_name": me.first_name or "Bot",
             "is_bot": True
         })
         
         # Save to database
         await db.add_pyrogram_session(
             session_name=request.session_name,
-            phone_number=f"bot_{me.username}",
+            phone_number=f"bot_{username}",
             api_id=request.api_id,
             api_hash=request.api_hash,
             user_info=user_info,
