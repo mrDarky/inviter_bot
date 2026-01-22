@@ -78,6 +78,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if request.url.path == '/admin/channel-invite-links' %}active{% endif %}" href="/admin/channel-invite-links">
+                                <i class="bi bi-broadcast"></i> Channel Invite Links
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if request.url.path == '/admin/session-manager' %}active{% endif %}" href="/admin/session-manager">
                                 <i class="bi bi-person-badge"></i> Session Manager
                             </a>

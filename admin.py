@@ -1530,6 +1530,372 @@ async def toggle_invite_link(link_id: int, _: None = Depends(require_auth)):
         return {"status": "error", "message": str(e)}
 
 
+# Channel invite links routes (Telegram channel invite links)
+@app.get("/admin/channel-invite-links", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def channel_invite_links_page(request: Request):
+    """Channel invite links management page"""
+    links = await db.get_channel_invite_links()
+    sessions = await db.get_pyrogram_sessions()
+    
+    # Filter only active sessions
+    active_sessions = [s for s in sessions if s['is_active']]
+    
+    return templates.TemplateResponse("channel_invite_links.html", {
+        "request": request,
+        "links": links,
+        "sessions": active_sessions
+    })
+
+
+@app.post("/api/channel-invite-links/get-channels")
+async def get_user_channels(session_name: str = Form(...), _: None = Depends(require_auth)):
+    """Get list of channels/groups for a Pyrogram session"""
+    try:
+        # Get session data from database
+        session_data = await db.get_pyrogram_session(session_name)
+        if not session_data:
+            return {"status": "error", "message": "Session not found"}
+        
+        if not session_data['is_active']:
+            return {"status": "error", "message": "Session is not active"}
+        
+        # Create Pyrogram client
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, session_name),
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Get all dialogs (chats)
+            channels = []
+            async for dialog in client.get_dialogs():
+                chat = dialog.chat
+                # Only include channels and supergroups where user is admin
+                if chat.type in ["channel", "supergroup"]:
+                    try:
+                        # Check if user has rights to create invite links
+                        member = await client.get_chat_member(chat.id, "me")
+                        if member.privileges and (member.privileges.can_invite_users or member.status == "creator"):
+                            channels.append({
+                                "id": chat.id,
+                                "title": chat.title,
+                                "username": chat.username,
+                                "type": chat.type
+                            })
+                    except Exception:
+                        # Skip channels where we can't get member info
+                        pass
+            
+            await client.stop()
+            
+            return {"status": "success", "channels": channels}
+        except Exception as e:
+            try:
+                await client.stop()
+            except:
+                pass
+            logger.error(f"Error getting channels: {e}")
+            return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"Error in get_user_channels: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/channel-invite-links/create")
+async def create_channel_invite_link(
+    session_name: str = Form(...),
+    channel_id: int = Form(...),
+    name: str = Form(...),
+    expire_date: Optional[int] = Form(None),
+    member_limit: Optional[int] = Form(None),
+    creates_join_request: bool = Form(False),
+    _: None = Depends(require_auth)
+):
+    """Create a new channel invite link via Pyrogram"""
+    try:
+        # Get session data
+        session_data = await db.get_pyrogram_session(session_name)
+        if not session_data or not session_data['is_active']:
+            return {"status": "error", "message": "Session not found or inactive"}
+        
+        # Create Pyrogram client
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, session_name),
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Get channel info
+            chat = await client.get_chat(channel_id)
+            
+            # Create invite link
+            invite_link = await client.create_chat_invite_link(
+                chat_id=channel_id,
+                name=name,
+                expire_date=expire_date,
+                member_limit=member_limit,
+                creates_join_request=creates_join_request
+            )
+            
+            # Save to database
+            await db.create_channel_invite_link(
+                session_name=session_name,
+                channel_id=channel_id,
+                channel_title=chat.title,
+                channel_username=chat.username,
+                invite_link=invite_link.invite_link,
+                name=name,
+                expire_date=expire_date,
+                member_limit=member_limit,
+                creates_join_request=1 if creates_join_request else 0,
+                is_primary=0
+            )
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "message": f"Invite link '{name}' created successfully",
+                "invite_link": invite_link.invite_link
+            }
+        except Exception as e:
+            try:
+                await client.stop()
+            except:
+                pass
+            logger.error(f"Error creating channel invite link: {e}")
+            return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"Error in create_channel_invite_link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.put("/api/channel-invite-links/{link_id}/edit")
+async def edit_channel_invite_link(
+    link_id: int,
+    name: str = Form(...),
+    expire_date: Optional[int] = Form(None),
+    member_limit: Optional[int] = Form(None),
+    creates_join_request: bool = Form(False),
+    _: None = Depends(require_auth)
+):
+    """Edit a channel invite link via Pyrogram"""
+    try:
+        # Get link data
+        link_data = await db.get_channel_invite_link_by_id(link_id)
+        if not link_data:
+            return {"status": "error", "message": "Link not found"}
+        
+        if link_data['is_revoked']:
+            return {"status": "error", "message": "Cannot edit revoked link"}
+        
+        # Get session data
+        session_data = await db.get_pyrogram_session(link_data['session_name'])
+        if not session_data or not session_data['is_active']:
+            return {"status": "error", "message": "Session not found or inactive"}
+        
+        # Create Pyrogram client
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, link_data['session_name']),
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Edit invite link
+            updated_link = await client.edit_chat_invite_link(
+                chat_id=link_data['channel_id'],
+                invite_link=link_data['invite_link'],
+                name=name,
+                expire_date=expire_date,
+                member_limit=member_limit,
+                creates_join_request=creates_join_request
+            )
+            
+            # Update in database
+            await db.update_channel_invite_link(
+                link_id=link_id,
+                name=name,
+                expire_date=expire_date,
+                member_limit=member_limit,
+                creates_join_request=1 if creates_join_request else 0
+            )
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "message": f"Invite link '{name}' updated successfully"
+            }
+        except Exception as e:
+            try:
+                await client.stop()
+            except:
+                pass
+            logger.error(f"Error editing channel invite link: {e}")
+            return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"Error in edit_channel_invite_link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/channel-invite-links/{link_id}/export")
+async def export_channel_invite_link(link_id: int, _: None = Depends(require_auth)):
+    """Export (get) a channel invite link via Pyrogram"""
+    try:
+        # Get link data
+        link_data = await db.get_channel_invite_link_by_id(link_id)
+        if not link_data:
+            return {"status": "error", "message": "Link not found"}
+        
+        # Get session data
+        session_data = await db.get_pyrogram_session(link_data['session_name'])
+        if not session_data or not session_data['is_active']:
+            return {"status": "error", "message": "Session not found or inactive"}
+        
+        # Create Pyrogram client
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, link_data['session_name']),
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Export chat invite link (get primary link)
+            invite_link = await client.export_chat_invite_link(link_data['channel_id'])
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "message": "Primary invite link exported",
+                "invite_link": invite_link
+            }
+        except Exception as e:
+            try:
+                await client.stop()
+            except:
+                pass
+            logger.error(f"Error exporting channel invite link: {e}")
+            return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"Error in export_channel_invite_link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/channel-invite-links/{link_id}/revoke")
+async def revoke_channel_invite_link(link_id: int, _: None = Depends(require_auth)):
+    """Revoke a channel invite link via Pyrogram"""
+    try:
+        # Get link data
+        link_data = await db.get_channel_invite_link_by_id(link_id)
+        if not link_data:
+            return {"status": "error", "message": "Link not found"}
+        
+        if link_data['is_revoked']:
+            return {"status": "error", "message": "Link is already revoked"}
+        
+        # Get session data
+        session_data = await db.get_pyrogram_session(link_data['session_name'])
+        if not session_data or not session_data['is_active']:
+            return {"status": "error", "message": "Session not found or inactive"}
+        
+        # Create Pyrogram client
+        client = Client(
+            name=os.path.join(SESSIONS_DIR, link_data['session_name']),
+            api_id=session_data['api_id'],
+            api_hash=session_data['api_hash']
+        )
+        
+        try:
+            await client.start()
+            
+            # Revoke invite link
+            await client.revoke_chat_invite_link(
+                chat_id=link_data['channel_id'],
+                invite_link=link_data['invite_link']
+            )
+            
+            # Mark as revoked in database
+            await db.update_channel_invite_link(link_id=link_id, is_revoked=1)
+            
+            await client.stop()
+            
+            return {
+                "status": "success",
+                "message": "Invite link revoked successfully"
+            }
+        except Exception as e:
+            try:
+                await client.stop()
+            except:
+                pass
+            logger.error(f"Error revoking channel invite link: {e}")
+            return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.error(f"Error in revoke_channel_invite_link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.delete("/api/channel-invite-links/{link_id}")
+async def delete_channel_invite_link_route(link_id: int, _: None = Depends(require_auth)):
+    """Delete a channel invite link via Pyrogram and from database"""
+    try:
+        # Get link data
+        link_data = await db.get_channel_invite_link_by_id(link_id)
+        if not link_data:
+            return {"status": "error", "message": "Link not found"}
+        
+        # Get session data
+        session_data = await db.get_pyrogram_session(link_data['session_name'])
+        if session_data and session_data['is_active']:
+            # Try to delete from Telegram
+            client = Client(
+                name=os.path.join(SESSIONS_DIR, link_data['session_name']),
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
+            
+            try:
+                await client.start()
+                
+                # Delete invite link from Telegram
+                await client.delete_chat_invite_link(
+                    chat_id=link_data['channel_id'],
+                    invite_link=link_data['invite_link']
+                )
+                
+                await client.stop()
+            except Exception as e:
+                try:
+                    await client.stop()
+                except:
+                    pass
+                logger.warning(f"Could not delete link from Telegram: {e}")
+                # Continue to delete from database anyway
+        
+        # Delete from database
+        await db.delete_channel_invite_link(link_id)
+        
+        return {
+            "status": "success",
+            "message": "Invite link deleted successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error in delete_channel_invite_link: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("API_HOST", "0.0.0.0")
