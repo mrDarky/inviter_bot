@@ -100,23 +100,33 @@
                             <div class="btn-group btn-group-sm" role="group">
                                 {% if not link.is_revoked %}
                                 <button type="button" class="btn btn-outline-primary" 
-                                        onclick="showEditModal({{ link.id }}, '{{ link.name }}', {{ link.expire_date or 'null' }}, {{ link.member_limit or 'null' }}, {{ link.creates_join_request }})" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        data-expire-date="{{ link.expire_date or '' }}"
+                                        data-member-limit="{{ link.member_limit or '' }}"
+                                        data-creates-join-request="{{ link.creates_join_request }}"
+                                        onclick="showEditModal(this)" 
                                         title="Edit">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-info" 
-                                        onclick="exportLink({{ link.id }})" 
+                                        data-link-id="{{ link.id }}"
+                                        onclick="exportLink(this)" 
                                         title="Export primary link">
                                     <i class="bi bi-upload"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-warning" 
-                                        onclick="revokeLink({{ link.id }}, '{{ link.name }}')" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        onclick="revokeLink(this)" 
                                         title="Revoke">
                                     <i class="bi bi-x-circle"></i>
                                 </button>
                                 {% endif %}
                                 <button type="button" class="btn btn-outline-danger" 
-                                        onclick="deleteLink({{ link.id }}, '{{ link.name }}')" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        onclick="deleteLink(this)" 
                                         title="Delete">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -367,7 +377,13 @@ async function createLink() {
     }
 }
 
-function showEditModal(linkId, name, expireDate, memberLimit, createsJoinRequest) {
+function showEditModal(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const name = button.getAttribute('data-link-name');
+    const expireDate = button.getAttribute('data-expire-date');
+    const memberLimit = button.getAttribute('data-member-limit');
+    const createsJoinRequest = button.getAttribute('data-creates-join-request') === '1';
+    
     document.getElementById('editLinkId').value = linkId;
     document.getElementById('editLinkName').value = name;
     document.getElementById('editExpireDate').value = expireDate || '';
@@ -420,7 +436,9 @@ async function editLink() {
     }
 }
 
-async function exportLink(linkId) {
+async function exportLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    
     try {
         const response = await fetch(`/api/channel-invite-links/${linkId}/export`, {
             method: 'POST'
@@ -448,7 +466,10 @@ async function exportLink(linkId) {
     }
 }
 
-async function revokeLink(linkId, linkName) {
+async function revokeLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const linkName = button.getAttribute('data-link-name');
+    
     if (!confirm(`Revoke invite link "${linkName}"?\n\nThis will prevent new users from joining through this link.`)) {
         return;
     }
@@ -470,7 +491,10 @@ async function revokeLink(linkId, linkName) {
     }
 }
 
-async function deleteLink(linkId, linkName) {
+async function deleteLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const linkName = button.getAttribute('data-link-name');
+    
     if (!confirm(`Delete invite link "${linkName}"?\n\nThis action cannot be undone.`)) {
         return;
     }

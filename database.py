@@ -195,6 +195,7 @@ class Database:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS channel_invite_links (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
                     session_name TEXT NOT NULL,
                     channel_id INTEGER NOT NULL,
                     channel_title TEXT,
@@ -208,7 +209,7 @@ class Database:
                     is_revoked INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (session_name) REFERENCES pyrogram_sessions(session_name)
+                    FOREIGN KEY (session_id) REFERENCES pyrogram_sessions(id)
                 )
             """)
             
@@ -890,15 +891,25 @@ class Database:
     ):
         """Create a new channel invite link record"""
         async with aiosqlite.connect(self.db_path) as db:
+            # Get session_id from session_name
+            async with db.execute(
+                "SELECT id FROM pyrogram_sessions WHERE session_name = ?",
+                (session_name,)
+            ) as cursor:
+                session_row = await cursor.fetchone()
+                if not session_row:
+                    raise ValueError(f"Session '{session_name}' not found")
+                session_id = session_row[0]
+            
             await db.execute("""
                 INSERT INTO channel_invite_links (
-                    session_name, channel_id, channel_title, channel_username,
+                    session_id, session_name, channel_id, channel_title, channel_username,
                     invite_link, name, expire_date, member_limit, 
                     creates_join_request, is_primary
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                session_name, channel_id, channel_title, channel_username,
+                session_id, session_name, channel_id, channel_title, channel_username,
                 invite_link, name, expire_date, member_limit,
                 creates_join_request, is_primary
             ))
