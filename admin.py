@@ -1350,12 +1350,20 @@ async def pyrogram_check_session(
         
         session_path = os.path.join(SESSIONS_DIR, request.session_name)
         
-        # Create client and check
-        client = Client(
-            name=session_path,
-            api_id=session_data['api_id'],
-            api_hash=session_data['api_hash']
-        )
+        # Create client - handle both user and bot sessions
+        if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash'],
+                bot_token=session_data['bot_token']
+            )
+        else:
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
         
         try:
             await client.start()
@@ -1365,8 +1373,9 @@ async def pyrogram_check_session(
                 "id": me.id,
                 "username": me.username,
                 "first_name": me.first_name,
-                "last_name": me.last_name,
-                "phone_number": me.phone_number
+                "last_name": getattr(me, 'last_name', None),
+                "phone_number": getattr(me, 'phone_number', None),
+                "is_bot": getattr(me, 'is_bot', False)
             })
             
             # Update database
@@ -1400,12 +1409,20 @@ async def pyrogram_load_requests(
         
         session_path = os.path.join(SESSIONS_DIR, request.session_name)
         
-        # Create client
-        client = Client(
-            name=session_path,
-            api_id=session_data['api_id'],
-            api_hash=session_data['api_hash']
-        )
+        # Create client - handle both user and bot sessions
+        if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash'],
+                bot_token=session_data['bot_token']
+            )
+        else:
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
         
         try:
             await client.start()
