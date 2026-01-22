@@ -147,6 +147,13 @@ class PyrogramDeleteSessionRequest(BaseModel):
     session_name: str
 
 
+class PyrogramBotSessionRequest(BaseModel):
+    session_name: str
+    api_id: int
+    api_hash: str
+    bot_token: str
+
+
 class ScheduleMessageRequest(BaseModel):
     text: str
     html_text: Optional[str] = None
@@ -353,6 +360,16 @@ async def settings_page(request: Request):
         "request": request,
         "settings": settings
     })
+
+
+@app.get("/api/settings")
+async def get_settings_api(_: None = Depends(require_auth)):
+    """Get settings via API"""
+    settings = await db.get_all_settings()
+    # Get bot token from DB if exists, otherwise from env
+    bot_token = settings.get('bot_token') or os.getenv('BOT_TOKEN', '')
+    settings['bot_token'] = bot_token
+    return settings
 
 
 @app.get("/admin/logs", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
@@ -1333,12 +1350,20 @@ async def pyrogram_check_session(
         
         session_path = os.path.join(SESSIONS_DIR, request.session_name)
         
-        # Create client and check
-        client = Client(
-            name=session_path,
-            api_id=session_data['api_id'],
-            api_hash=session_data['api_hash']
-        )
+        # Create client - handle both user and bot sessions
+        if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash'],
+                bot_token=session_data['bot_token']
+            )
+        else:
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
         
         try:
             await client.start()
@@ -1348,8 +1373,9 @@ async def pyrogram_check_session(
                 "id": me.id,
                 "username": me.username,
                 "first_name": me.first_name,
-                "last_name": me.last_name,
-                "phone_number": me.phone_number
+                "last_name": getattr(me, 'last_name', None),
+                "phone_number": getattr(me, 'phone_number', None),
+                "is_bot": getattr(me, 'is_bot', False)
             })
             
             # Update database
@@ -1383,12 +1409,20 @@ async def pyrogram_load_requests(
         
         session_path = os.path.join(SESSIONS_DIR, request.session_name)
         
-        # Create client
-        client = Client(
-            name=session_path,
-            api_id=session_data['api_id'],
-            api_hash=session_data['api_hash']
-        )
+        # Create client - handle both user and bot sessions
+        if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash'],
+                bot_token=session_data['bot_token']
+            )
+        else:
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
         
         try:
             await client.start()
@@ -1484,6 +1518,67 @@ async def pyrogram_delete_session(
         return {"status": "success", "message": "Session deleted"}
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/create-bot-session")
+async def pyrogram_create_bot_session(
+    request: PyrogramBotSessionRequest,
+    _: None = Depends(require_auth)
+):
+    """Create a bot session using bot token"""
+    try:
+        session_path = os.path.join(SESSIONS_DIR, request.session_name)
+        
+        # Create Pyrogram bot client
+        client = Client(
+            name=session_path,
+            api_id=request.api_id,
+            api_hash=request.api_hash,
+            bot_token=request.bot_token
+        )
+        
+        # Start the client and get bot info
+        await client.start()
+        me = await client.get_me()
+        
+        # Create user_info JSON with null checks
+        username = me.username or f"bot_{me.id}"
+        user_info = json.dumps({
+            "id": me.id,
+            "username": username,
+            "first_name": me.first_name or "Bot",
+            "is_bot": True
+        })
+        
+        # Save to database
+        await db.add_pyrogram_session(
+            session_name=request.session_name,
+            phone_number=f"bot_{username}",
+            api_id=request.api_id,
+            api_hash=request.api_hash,
+            user_info=user_info,
+            session_type='bot',
+            bot_token=request.bot_token
+        )
+        
+        # Stop the client
+        await client.stop()
+        
+        return {
+            "status": "success",
+            "user_info": user_info,
+            "message": "Bot session created successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error creating bot session: {e}")
+        # Clean up session file if it was created
+        session_path_file = os.path.join(SESSIONS_DIR, f"{request.session_name}.session")
+        if os.path.exists(session_path_file):
+            try:
+                os.remove(session_path_file)
+            except:
+                pass
         return {"status": "error", "message": str(e)}
 
 
