@@ -191,6 +191,28 @@ class Database:
                 )
             """)
             
+            # Channel invite links table (Telegram channel invite links)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS channel_invite_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    session_name TEXT NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    channel_title TEXT,
+                    channel_username TEXT,
+                    invite_link TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    expire_date INTEGER,
+                    member_limit INTEGER,
+                    creates_join_request INTEGER DEFAULT 0,
+                    is_primary INTEGER DEFAULT 0,
+                    is_revoked INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES pyrogram_sessions(id)
+                )
+            """)
+            
             # Migration: Add new columns to static_messages if they don't exist
             try:
                 # Check if columns exist
@@ -851,4 +873,123 @@ class Database:
                 SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
                 WHERE id = ?
             """, (link_id,))
+            await db.commit()
+    
+    # Channel invite links methods (Telegram channel invite links)
+    async def create_channel_invite_link(
+        self,
+        session_name: str,
+        channel_id: int,
+        channel_title: str,
+        channel_username: str,
+        invite_link: str,
+        name: str,
+        expire_date: int = None,
+        member_limit: int = None,
+        creates_join_request: int = 0,
+        is_primary: int = 0
+    ):
+        """Create a new channel invite link record"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Get session_id from session_name
+            async with db.execute(
+                "SELECT id FROM pyrogram_sessions WHERE session_name = ?",
+                (session_name,)
+            ) as cursor:
+                session_row = await cursor.fetchone()
+                if not session_row:
+                    raise ValueError(f"Session '{session_name}' not found")
+                session_id = session_row[0]
+            
+            await db.execute("""
+                INSERT INTO channel_invite_links (
+                    session_id, session_name, channel_id, channel_title, channel_username,
+                    invite_link, name, expire_date, member_limit, 
+                    creates_join_request, is_primary
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session_id, session_name, channel_id, channel_title, channel_username,
+                invite_link, name, expire_date, member_limit,
+                creates_join_request, is_primary
+            ))
+            await db.commit()
+    
+    async def get_channel_invite_links(self, session_name: str = None, channel_id: int = None):
+        """Get all channel invite links with optional filters"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT * FROM channel_invite_links WHERE 1=1"
+            params = []
+            
+            if session_name:
+                query += " AND session_name = ?"
+                params.append(session_name)
+            
+            if channel_id:
+                query += " AND channel_id = ?"
+                params.append(channel_id)
+            
+            query += " ORDER BY created_at DESC"
+            
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_channel_invite_link_by_id(self, link_id: int):
+        """Get a specific channel invite link by ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM channel_invite_links WHERE id = ?",
+                (link_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def update_channel_invite_link(
+        self,
+        link_id: int,
+        invite_link: str = None,
+        name: str = None,
+        expire_date: int = None,
+        member_limit: int = None,
+        creates_join_request: int = None,
+        is_revoked: int = None
+    ):
+        """Update a channel invite link"""
+        async with aiosqlite.connect(self.db_path) as db:
+            updates = []
+            params = []
+            
+            if invite_link is not None:
+                updates.append("invite_link = ?")
+                params.append(invite_link)
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if expire_date is not None:
+                updates.append("expire_date = ?")
+                params.append(expire_date)
+            if member_limit is not None:
+                updates.append("member_limit = ?")
+                params.append(member_limit)
+            if creates_join_request is not None:
+                updates.append("creates_join_request = ?")
+                params.append(creates_join_request)
+            if is_revoked is not None:
+                updates.append("is_revoked = ?")
+                params.append(is_revoked)
+            
+            if updates:
+                updates.append("updated_at = CURRENT_TIMESTAMP")
+                params.append(link_id)
+                query = f"UPDATE channel_invite_links SET {', '.join(updates)} WHERE id = ?"
+                await db.execute(query, params)
+                await db.commit()
+    
+    async def delete_channel_invite_link(self, link_id: int):
+        """Delete a channel invite link"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM channel_invite_links WHERE id = ?", (link_id,))
             await db.commit()

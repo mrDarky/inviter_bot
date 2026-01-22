@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+
+{% block title %}Channel Invite Links - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-link-45deg"></i> Channel Invite Links</h2>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createLinkModal">
+        <i class="bi bi-plus-circle"></i> Create Invite Link
+    </button>
+</div>
+
+<!-- Info Card -->
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle"></i>
+    <strong>About:</strong> Manage Telegram channel invite links using Pyrogram. 
+    Create, edit, export, revoke, and delete invite links for your channels.
+    {% if not sessions %}
+    <div class="mt-2 alert alert-warning mb-0">
+        <i class="bi bi-exclamation-triangle"></i> 
+        <strong>Note:</strong> You need to add at least one Pyrogram session in the 
+        <a href="/admin/session-manager">Session Manager</a> before creating channel invite links.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Channel Invite Links Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Channel</th>
+                        <th>Invite Link</th>
+                        <th>Session</th>
+                        <th>Expires</th>
+                        <th>Member Limit</th>
+                        <th>Join Request</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if links %}
+                    {% for link in links %}
+                    <tr class="{% if link.is_revoked %}table-secondary{% endif %}">
+                        <td><strong>{{ link.name }}</strong></td>
+                        <td>
+                            <div>{{ link.channel_title }}</div>
+                            {% if link.channel_username %}
+                            <small class="text-muted">@{{ link.channel_username }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group input-group-sm" style="max-width: 300px;">
+                                <input type="text" class="form-control form-control-sm" id="link-{{ link.id }}" 
+                                       value="{{ link.invite_link }}" readonly>
+                                <button class="btn btn-outline-secondary btn-sm" type="button" 
+                                        onclick="copyToClipboard('link-{{ link.id }}')">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td><code>{{ link.session_name }}</code></td>
+                        <td>
+                            {% if link.expire_date %}
+                            <span class="badge bg-warning">{{ link.expire_date }}</span>
+                            {% else %}
+                            <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if link.member_limit %}
+                            <span class="badge bg-info">{{ link.member_limit }}</span>
+                            {% else %}
+                            <span class="text-muted">Unlimited</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if link.creates_join_request %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if link.is_revoked %}
+                            <span class="badge bg-danger">Revoked</span>
+                            {% elif link.is_primary %}
+                            <span class="badge bg-primary">Primary</span>
+                            {% else %}
+                            <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ link.created_at[:10] }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                {% if not link.is_revoked %}
+                                <button type="button" class="btn btn-outline-primary" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        data-expire-date="{{ link.expire_date or '' }}"
+                                        data-member-limit="{{ link.member_limit or '' }}"
+                                        data-creates-join-request="{{ 'true' if link.creates_join_request else 'false' }}"
+                                        onclick="showEditModal(this)" 
+                                        title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-info" 
+                                        data-link-id="{{ link.id }}"
+                                        onclick="exportLink(this)" 
+                                        title="Export primary link">
+                                    <i class="bi bi-upload"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-warning" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        onclick="revokeLink(this)" 
+                                        title="Revoke">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-danger" 
+                                        data-link-id="{{ link.id }}"
+                                        data-link-name="{{ link.name }}"
+                                        onclick="deleteLink(this)" 
+                                        title="Delete">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">
+                            <i class="bi bi-link-45deg fs-1"></i>
+                            <p class="mt-2">No channel invite links yet. Create your first one!</p>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create Link Modal -->
+<div class="modal fade" id="createLinkModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Channel Invite Link</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createLinkForm">
+                    <div class="mb-3">
+                        <label class="form-label">Pyrogram Session <span class="text-danger">*</span></label>
+                        <select class="form-select" id="sessionName" required onchange="loadChannels()">
+                            <option value="">Select a session...</option>
+                            {% for session in sessions %}
+                            <option value="{{ session.session_name }}">{{ session.session_name }} ({{ session.phone_number }})</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Select the Pyrogram session to use</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Channel <span class="text-danger">*</span></label>
+                        <select class="form-select" id="channelId" required disabled>
+                            <option value="">Select a session first...</option>
+                        </select>
+                        <small class="text-muted">Select the channel to create invite link for</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Link Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="linkName" required
+                               placeholder="e.g., Promo Campaign 2024">
+                        <small class="text-muted">A friendly name to identify this link</small>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Expire Date (Unix timestamp)</label>
+                            <input type="number" class="form-control" id="expireDate" 
+                                   placeholder="Leave empty for no expiration">
+                            <small class="text-muted">Link expiration time in Unix timestamp</small>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Member Limit</label>
+                            <input type="number" class="form-control" id="memberLimit" min="1"
+                                   placeholder="Leave empty for unlimited">
+                            <small class="text-muted">Maximum number of users that can join</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="createsJoinRequest">
+                        <label class="form-check-label" for="createsJoinRequest">
+                            Requires admin approval (join request)
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createLink()">
+                    <i class="bi bi-plus-circle"></i> Create Link
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Link Modal -->
+<div class="modal fade" id="editLinkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Invite Link</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editLinkForm">
+                    <input type="hidden" id="editLinkId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Link Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editLinkName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Expire Date (Unix timestamp)</label>
+                        <input type="number" class="form-control" id="editExpireDate" 
+                               placeholder="Leave empty for no expiration">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Member Limit</label>
+                        <input type="number" class="form-control" id="editMemberLimit" min="1"
+                               placeholder="Leave empty for unlimited">
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="editCreatesJoinRequest">
+                        <label class="form-check-label" for="editCreatesJoinRequest">
+                            Requires admin approval (join request)
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="editLink()">
+                    <i class="bi bi-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let channelsCache = {};
+
+async function loadChannels() {
+    const sessionSelect = document.getElementById('sessionName');
+    const channelSelect = document.getElementById('channelId');
+    const sessionName = sessionSelect.value;
+    
+    if (!sessionName) {
+        channelSelect.disabled = true;
+        channelSelect.innerHTML = '<option value="">Select a session first...</option>';
+        return;
+    }
+    
+    // Check cache first
+    if (channelsCache[sessionName]) {
+        populateChannels(channelsCache[sessionName]);
+        return;
+    }
+    
+    // Show loading
+    channelSelect.disabled = true;
+    channelSelect.innerHTML = '<option value="">Loading channels...</option>';
+    
+    try {
+        const formData = new FormData();
+        formData.append('session_name', sessionName);
+        
+        const response = await fetch('/api/channel-invite-links/get-channels', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            channelsCache[sessionName] = data.channels;
+            populateChannels(data.channels);
+        } else {
+            channelSelect.innerHTML = '<option value="">Error: ' + data.message + '</option>';
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        channelSelect.innerHTML = '<option value="">Error loading channels</option>';
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+function populateChannels(channels) {
+    const channelSelect = document.getElementById('channelId');
+    channelSelect.disabled = false;
+    
+    if (channels.length === 0) {
+        channelSelect.innerHTML = '<option value="">No channels found</option>';
+        return;
+    }
+    
+    let html = '<option value="">Select a channel...</option>';
+    for (const channel of channels) {
+        html += `<option value="${channel.id}">${channel.title}${channel.username ? ' (@' + channel.username + ')' : ''}</option>`;
+    }
+    channelSelect.innerHTML = html;
+}
+
+async function createLink() {
+    const sessionName = document.getElementById('sessionName').value;
+    const channelId = document.getElementById('channelId').value;
+    const name = document.getElementById('linkName').value.trim();
+    const expireDate = document.getElementById('expireDate').value;
+    const memberLimit = document.getElementById('memberLimit').value;
+    const createsJoinRequest = document.getElementById('createsJoinRequest').checked;
+    
+    if (!sessionName || !channelId || !name) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('session_name', sessionName);
+        formData.append('channel_id', channelId);
+        formData.append('name', name);
+        if (expireDate) formData.append('expire_date', expireDate);
+        if (memberLimit) formData.append('member_limit', memberLimit);
+        formData.append('creates_join_request', createsJoinRequest);
+        
+        const response = await fetch('/api/channel-invite-links/create', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification(data.message, 'success');
+            
+            // Close modal and reset form
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createLinkModal'));
+            modal.hide();
+            document.getElementById('createLinkForm').reset();
+            document.getElementById('channelId').disabled = true;
+            
+            // Reload page after short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+function showEditModal(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const name = button.getAttribute('data-link-name');
+    const expireDate = button.getAttribute('data-expire-date');
+    const memberLimit = button.getAttribute('data-member-limit');
+    const createsJoinRequest = button.getAttribute('data-creates-join-request') === 'true';
+    
+    document.getElementById('editLinkId').value = linkId;
+    document.getElementById('editLinkName').value = name;
+    document.getElementById('editExpireDate').value = expireDate || '';
+    document.getElementById('editMemberLimit').value = memberLimit || '';
+    document.getElementById('editCreatesJoinRequest').checked = createsJoinRequest;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editLinkModal'));
+    modal.show();
+}
+
+async function editLink() {
+    const linkId = document.getElementById('editLinkId').value;
+    const name = document.getElementById('editLinkName').value.trim();
+    const expireDate = document.getElementById('editExpireDate').value;
+    const memberLimit = document.getElementById('editMemberLimit').value;
+    const createsJoinRequest = document.getElementById('editCreatesJoinRequest').checked;
+    
+    if (!name) {
+        showNotification('Please enter a link name', 'error');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('name', name);
+        if (expireDate) formData.append('expire_date', expireDate);
+        if (memberLimit) formData.append('member_limit', memberLimit);
+        formData.append('creates_join_request', createsJoinRequest);
+        
+        const response = await fetch(`/api/channel-invite-links/${linkId}/edit`, {
+            method: 'PUT',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification(data.message, 'success');
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editLinkModal'));
+            modal.hide();
+            
+            // Reload page
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+async function exportLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    
+    try {
+        const response = await fetch(`/api/channel-invite-links/${linkId}/export`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification(data.message, 'success');
+            
+            // Show the exported link in a modal or alert
+            const inviteLink = data.invite_link;
+            if (inviteLink) {
+                // Copy to clipboard
+                navigator.clipboard.writeText(inviteLink).then(() => {
+                    showNotification('Primary invite link copied to clipboard!', 'success');
+                }).catch(() => {
+                    alert('Primary invite link: ' + inviteLink);
+                });
+            }
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+async function revokeLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const linkName = button.getAttribute('data-link-name');
+    
+    if (!confirm(`Revoke invite link "${linkName}"?\n\nThis will prevent new users from joining through this link.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/channel-invite-links/${linkId}/revoke`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+async function deleteLink(button) {
+    const linkId = button.getAttribute('data-link-id');
+    const linkName = button.getAttribute('data-link-name');
+    
+    if (!confirm(`Delete invite link "${linkName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/channel-invite-links/${linkId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+function copyToClipboard(inputId) {
+    const input = document.getElementById(inputId);
+    
+    // Use modern clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            showNotification('Link copied to clipboard!', 'success');
+        }).catch(() => {
+            // Fallback to legacy method
+            copyToClipboardLegacy(input);
+        });
+    } else {
+        // Fallback for older browsers
+        copyToClipboardLegacy(input);
+    }
+}
+
+function copyToClipboardLegacy(input) {
+    input.select();
+    input.setSelectionRange(0, 99999);
+    
+    try {
+        document.execCommand('copy');
+        showNotification('Link copied to clipboard!', 'success');
+    } catch (err) {
+        showNotification('Failed to copy link', 'error');
+    }
+}
+</script>
+{% endblock %}
