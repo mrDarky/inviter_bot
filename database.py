@@ -249,6 +249,21 @@ class Database:
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Migration warning for users table: {e}")
             
+            # Migration: Add session_type and bot_token columns to pyrogram_sessions table if they don't exist
+            try:
+                async with db.execute("PRAGMA table_info(pyrogram_sessions)") as cursor:
+                    columns = await cursor.fetchall()
+                    column_names = [col[1] for col in columns]
+                    
+                    if 'session_type' not in column_names:
+                        await db.execute("ALTER TABLE pyrogram_sessions ADD COLUMN session_type TEXT DEFAULT 'user'")
+                    if 'bot_token' not in column_names:
+                        await db.execute("ALTER TABLE pyrogram_sessions ADD COLUMN bot_token TEXT")
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Migration warning for pyrogram_sessions table: {e}")
+            
             await db.commit()
     
     # User operations
@@ -771,13 +786,13 @@ class Database:
                 return dict(result) if result else None
     
     # Pyrogram sessions methods
-    async def add_pyrogram_session(self, session_name: str, phone_number: str, api_id: int, api_hash: str, user_info: str = None):
+    async def add_pyrogram_session(self, session_name: str, phone_number: str, api_id: int, api_hash: str, user_info: str = None, session_type: str = 'user', bot_token: str = None):
         """Add a new Pyrogram session"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT INTO pyrogram_sessions (session_name, phone_number, api_id, api_hash, user_info, last_check)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (session_name, phone_number, api_id, api_hash, user_info))
+                INSERT INTO pyrogram_sessions (session_name, phone_number, api_id, api_hash, user_info, last_check, session_type, bot_token)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+            """, (session_name, phone_number, api_id, api_hash, user_info, session_type, bot_token))
             await db.commit()
     
     async def get_pyrogram_sessions(self):

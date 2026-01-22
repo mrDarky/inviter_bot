@@ -54,6 +54,12 @@
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newSessionModal">
                 <i class="bi bi-plus-circle"></i> Create New Session
             </button>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#botSessionModal">
+                <i class="bi bi-robot"></i> Create Bot Session
+            </button>
+            <button class="btn btn-info" onclick="createMainBotSession()">
+                <i class="bi bi-robot"></i> Use Main Bot Token
+            </button>
             <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importSessionModal">
                 <i class="bi bi-upload"></i> Import Session
             </button>
@@ -71,7 +77,17 @@
         <div class="session-card {% if session.is_active %}active{% else %}inactive{% endif %}">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h5><i class="bi bi-person-circle"></i> {{ session.session_name }}</h5>
+                    <h5>
+                        {% if session.session_type == 'bot' %}
+                        <i class="bi bi-robot"></i>
+                        {% else %}
+                        <i class="bi bi-person-circle"></i>
+                        {% endif %}
+                        {{ session.session_name }}
+                        {% if session.session_type == 'bot' %}
+                        <span class="badge bg-success">BOT</span>
+                        {% endif %}
+                    </h5>
                     <p class="mb-1"><strong>Phone:</strong> {{ session.phone_number }}</p>
                     {% if session.user_info %}
                     <p class="mb-1"><strong>User:</strong> {{ session.user_info }}</p>
@@ -237,6 +253,51 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-primary" onclick="importSession()">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bot Session Modal -->
+<div class="modal fade" id="botSessionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-robot"></i> Create Bot Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> <strong>Bot Session:</strong> Use a bot token instead of phone number authentication. This is useful for bots that need to manage channels.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Session Name</label>
+                    <input type="text" class="form-control" id="botSessionName" placeholder="my_bot_session">
+                    <small class="text-muted">Unique name for this bot session (no spaces)</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API ID</label>
+                    <input type="number" class="form-control" id="botApiId" placeholder="12345678" value="{{ settings.default_api_id or '' }}">
+                    <small class="text-muted">Get from <a href="https://my.telegram.org" target="_blank">my.telegram.org</a></small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API Hash</label>
+                    <input type="text" class="form-control" id="botApiHash" placeholder="abcdef1234567890" value="{{ settings.default_api_hash or '' }}">
+                    <small class="text-muted">Get from <a href="https://my.telegram.org" target="_blank">my.telegram.org</a></small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bot Token</label>
+                    <input type="text" class="form-control" id="botToken" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz">
+                    <small class="text-muted">Get from <a href="https://t.me/BotFather" target="_blank">@BotFather</a></small>
+                </div>
+                <div id="botSessionError" class="alert alert-danger" style="display: none;"></div>
+                <div id="botSessionSuccess" class="alert alert-success" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="createBotSessionBtn" onclick="createBotSession()">
+                    <i class="bi bi-robot"></i> Create Bot Session
+                </button>
             </div>
         </div>
     </div>
@@ -568,6 +629,108 @@ function showError(message) {
 
 function hideError() {
     document.getElementById('errorMessage').style.display = 'none';
+}
+
+async function createBotSession() {
+    const sessionName = document.getElementById('botSessionName').value;
+    const apiId = document.getElementById('botApiId').value;
+    const apiHash = document.getElementById('botApiHash').value;
+    const botToken = document.getElementById('botToken').value;
+    
+    if (!sessionName || !apiId || !apiHash || !botToken) {
+        showBotSessionError('Please fill in all fields');
+        return;
+    }
+    
+    const btn = document.getElementById('createBotSessionBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+    
+    try {
+        const response = await fetch('/api/pyrogram/create-bot-session', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                session_name: sessionName,
+                api_id: parseInt(apiId),
+                api_hash: apiHash,
+                bot_token: botToken
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showBotSessionSuccess('Bot session created successfully!');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showBotSessionError(data.message || 'Failed to create bot session');
+        }
+    } catch (error) {
+        showBotSessionError('Error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-robot"></i> Create Bot Session';
+    }
+}
+
+async function createMainBotSession() {
+    if (!confirm('This will create a bot session using the main bot token from settings. Continue?')) {
+        return;
+    }
+    
+    try {
+        // Get bot token and API credentials from settings
+        const response = await fetch('/api/settings');
+        const settings = await response.json();
+        
+        if (!settings.bot_token) {
+            showNotification('No bot token found in settings. Please configure it first.', 'error');
+            return;
+        }
+        
+        if (!settings.default_api_id || !settings.default_api_hash) {
+            showNotification('API credentials not configured. Please set them in Settings.', 'error');
+            return;
+        }
+        
+        // Create bot session with name 'main_bot'
+        const createResponse = await fetch('/api/pyrogram/create-bot-session', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                session_name: 'main_bot',
+                api_id: parseInt(settings.default_api_id),
+                api_hash: settings.default_api_hash,
+                bot_token: settings.bot_token
+            })
+        });
+        
+        const data = await createResponse.json();
+        
+        if (data.status === 'success') {
+            showNotification('Main bot session created successfully!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showNotification(data.message || 'Failed to create main bot session', 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+}
+
+function showBotSessionError(message) {
+    const errorEl = document.getElementById('botSessionError');
+    errorEl.textContent = message;
+    errorEl.style.display = 'block';
+    document.getElementById('botSessionSuccess').style.display = 'none';
+}
+
+function showBotSessionSuccess(message) {
+    const successEl = document.getElementById('botSessionSuccess');
+    successEl.textContent = message;
+    successEl.style.display = 'block';
+    document.getElementById('botSessionError').style.display = 'none';
 }
 </script>
 {% endblock %}
