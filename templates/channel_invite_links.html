@@ -160,7 +160,7 @@
                 <form id="createLinkForm">
                     <div class="mb-3">
                         <label class="form-label">Pyrogram Session <span class="text-danger">*</span></label>
-                        <select class="form-select" id="sessionName" required onchange="loadChannels()">
+                        <select class="form-select" id="sessionName" required>
                             <option value="">Select a session...</option>
                             {% for session in sessions %}
                             <option value="{{ session.session_name }}">{{ session.session_name }} ({{ session.phone_number }})</option>
@@ -170,11 +170,10 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">Channel <span class="text-danger">*</span></label>
-                        <select class="form-select" id="channelId" required disabled>
-                            <option value="">Select a session first...</option>
-                        </select>
-                        <small class="text-muted">Select the channel to create invite link for</small>
+                        <label class="form-label">Channel ID or Username <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="channelId" required
+                               placeholder="e.g., -1001234567890 or @channelname">
+                        <small class="text-muted">Enter the channel ID (numeric with -100 prefix) or username (@channelname)</small>
                     </div>
                     
                     <div class="mb-3">
@@ -268,68 +267,6 @@
 
 {% block extra_js %}
 <script>
-let channelsCache = {};
-
-async function loadChannels() {
-    const sessionSelect = document.getElementById('sessionName');
-    const channelSelect = document.getElementById('channelId');
-    const sessionName = sessionSelect.value;
-    
-    if (!sessionName) {
-        channelSelect.disabled = true;
-        channelSelect.innerHTML = '<option value="">Select a session first...</option>';
-        return;
-    }
-    
-    // Check cache first
-    if (channelsCache[sessionName]) {
-        populateChannels(channelsCache[sessionName]);
-        return;
-    }
-    
-    // Show loading
-    channelSelect.disabled = true;
-    channelSelect.innerHTML = '<option value="">Loading channels...</option>';
-    
-    try {
-        const formData = new FormData();
-        formData.append('session_name', sessionName);
-        
-        const response = await fetch('/api/channel-invite-links/get-channels', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            channelsCache[sessionName] = data.channels;
-            populateChannels(data.channels);
-        } else {
-            channelSelect.innerHTML = '<option value="">Error: ' + data.message + '</option>';
-            showNotification(data.message, 'error');
-        }
-    } catch (error) {
-        channelSelect.innerHTML = '<option value="">Error loading channels</option>';
-        showNotification('Error: ' + error, 'error');
-    }
-}
-
-function populateChannels(channels) {
-    const channelSelect = document.getElementById('channelId');
-    channelSelect.disabled = false;
-    
-    if (channels.length === 0) {
-        channelSelect.innerHTML = '<option value="">No channels found</option>';
-        return;
-    }
-    
-    let html = '<option value="">Select a channel...</option>';
-    for (const channel of channels) {
-        html += `<option value="${channel.id}">${channel.title}${channel.username ? ' (@' + channel.username + ')' : ''}</option>`;
-    }
-    channelSelect.innerHTML = html;
-}
-
 async function createLink() {
     const sessionName = document.getElementById('sessionName').value;
     const channelId = document.getElementById('channelId').value;
@@ -365,7 +302,6 @@ async function createLink() {
             const modal = bootstrap.Modal.getInstance(document.getElementById('createLinkModal'));
             modal.hide();
             document.getElementById('createLinkForm').reset();
-            document.getElementById('channelId').disabled = true;
             
             // Reload page after short delay
             setTimeout(() => location.reload(), 1000);

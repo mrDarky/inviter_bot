@@ -1703,7 +1703,7 @@ async def get_user_channels(session_name: str = Form(...), _: None = Depends(req
 @app.post("/api/channel-invite-links/create")
 async def create_channel_invite_link(
     session_name: str = Form(...),
-    channel_id: int = Form(...),
+    channel_id: str = Form(...),
     name: str = Form(...),
     expire_date: Optional[int] = Form(None),
     member_limit: Optional[int] = Form(None),
@@ -1717,6 +1717,14 @@ async def create_channel_invite_link(
         if not session_data or not session_data['is_active']:
             return {"status": "error", "message": "Session not found or inactive"}
         
+        # Parse channel_id: could be numeric ID or username
+        # Try to convert to int, if it fails, treat as username
+        try:
+            parsed_channel_id = int(channel_id)
+        except ValueError:
+            # It's a username, keep it as string
+            parsed_channel_id = channel_id
+        
         # Create Pyrogram client
         client = Client(
             name=os.path.join(SESSIONS_DIR, session_name),
@@ -1727,22 +1735,22 @@ async def create_channel_invite_link(
         try:
             await client.start()
             
-            # Get channel info
-            chat = await client.get_chat(channel_id)
+            # Get channel info - this will validate access
+            chat = await client.get_chat(parsed_channel_id)
             
             # Create invite link
             invite_link = await client.create_chat_invite_link(
-                chat_id=channel_id,
+                chat_id=parsed_channel_id,
                 name=name,
                 expire_date=expire_date,
                 member_limit=member_limit,
                 creates_join_request=creates_join_request
             )
             
-            # Save to database
+            # Save to database - use chat.id for the numeric ID
             await db.create_channel_invite_link(
                 session_name=session_name,
-                channel_id=channel_id,
+                channel_id=chat.id,
                 channel_title=chat.title,
                 channel_username=chat.username,
                 invite_link=invite_link.invite_link,
