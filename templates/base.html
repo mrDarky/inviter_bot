@@ -9,14 +9,34 @@
     <style>
         body {
             min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .admin-container {
+            display: flex;
+            flex: 1;
+            min-height: 100vh;
         }
         .sidebar {
-            min-height: 100vh;
             background-color: #212529;
+            width: 250px;
+            min-height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            overflow-y: auto;
+            transition: transform 0.3s ease-in-out;
         }
         .sidebar .nav-link {
             color: #adb5bd;
             padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+        }
+        .sidebar .nav-link i {
+            margin-right: 0.5rem;
         }
         .sidebar .nav-link:hover {
             color: #fff;
@@ -26,8 +46,40 @@
             color: #fff;
             background-color: #0d6efd;
         }
+        .main-content-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin-left: 250px;
+            width: calc(100% - 250px);
+            transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+        .mobile-header {
+            display: none;
+            background-color: #212529;
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+        .mobile-menu-toggle {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+        .mobile-header-title {
+            color: white;
+            margin: 0;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+        }
         .main-content {
             padding: 2rem;
+            flex: 1;
         }
         .table-actions {
             margin-bottom: 1rem;
@@ -49,85 +101,158 @@
             right: 20px;
             z-index: 9999;
         }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+        
+        /* Mobile responsive styles */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .sidebar-overlay.show {
+                display: block;
+            }
+            .main-content-wrapper {
+                margin-left: 0;
+                width: 100%;
+            }
+            .mobile-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .main-content {
+                padding: 1rem;
+            }
+        }
+        
+        /* Tablet responsive styles */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .sidebar {
+                width: 200px;
+            }
+            .main-content-wrapper {
+                margin-left: 200px;
+                width: calc(100% - 200px);
+            }
+            .main-content {
+                padding: 1.5rem;
+            }
+        }
+        
+        /* Ensure tables are responsive */
+        .table-responsive {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            {% block sidebar %}
-            <nav class="col-md-2 d-md-block sidebar">
-                <div class="position-sticky pt-3">
-                    <h5 class="text-white px-3 mb-3">
-                        <i class="bi bi-robot"></i> Inviter Bot
-                    </h5>
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/users' %}active{% endif %}" href="/admin/users">
-                                <i class="bi bi-people"></i> Users
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/invite-requests' %}active{% endif %}" href="/admin/invite-requests">
-                                <i class="bi bi-person-plus"></i> Invite Requests
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/invite-links' %}active{% endif %}" href="/admin/invite-links">
-                                <i class="bi bi-link-45deg"></i> Invite Links
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/channel-invite-links' %}active{% endif %}" href="/admin/channel-invite-links">
-                                <i class="bi bi-broadcast"></i> Channel Invite Links
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/session-manager' %}active{% endif %}" href="/admin/session-manager">
-                                <i class="bi bi-person-badge"></i> Session Manager
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/statistics' %}active{% endif %}" href="/admin/statistics">
-                                <i class="bi bi-graph-up"></i> Statistics
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/scheduling' %}active{% endif %}" href="/admin/scheduling">
-                                <i class="bi bi-calendar-event"></i> Scheduling
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/static-messages' %}active{% endif %}" href="/admin/static-messages">
-                                <i class="bi bi-envelope"></i> Static Messages
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">
-                                <i class="bi bi-file-text"></i> Logs
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/menu-constructor' %}active{% endif %}" href="/admin/menu-constructor">
-                                <i class="bi bi-menu-button-wide"></i> Menu Constructor
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.url.path == '/admin/settings' %}active{% endif %}" href="/admin/settings">
-                                <i class="bi bi-gear"></i> Settings
-                            </a>
-                        </li>
-                        <li class="nav-item mt-3">
-                            <a class="nav-link text-danger" href="/logout">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-            {% endblock %}
+    <div class="admin-container">
+        <!-- Sidebar Overlay for Mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+        
+        {% block sidebar %}
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar" id="sidebar">
+            <div class="pt-3">
+                <h5 class="text-white px-3 mb-3">
+                    <i class="bi bi-robot"></i> Inviter Bot
+                </h5>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/users' %}active{% endif %}" href="/admin/users">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/invite-requests' %}active{% endif %}" href="/admin/invite-requests">
+                            <i class="bi bi-person-plus"></i> Invite Requests
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/invite-links' %}active{% endif %}" href="/admin/invite-links">
+                            <i class="bi bi-link-45deg"></i> Invite Links
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/channel-invite-links' %}active{% endif %}" href="/admin/channel-invite-links">
+                            <i class="bi bi-broadcast"></i> Channel Invite Links
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/session-manager' %}active{% endif %}" href="/admin/session-manager">
+                            <i class="bi bi-person-badge"></i> Session Manager
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/statistics' %}active{% endif %}" href="/admin/statistics">
+                            <i class="bi bi-graph-up"></i> Statistics
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/scheduling' %}active{% endif %}" href="/admin/scheduling">
+                            <i class="bi bi-calendar-event"></i> Scheduling
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/static-messages' %}active{% endif %}" href="/admin/static-messages">
+                            <i class="bi bi-envelope"></i> Static Messages
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">
+                            <i class="bi bi-file-text"></i> Logs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/menu-constructor' %}active{% endif %}" href="/admin/menu-constructor">
+                            <i class="bi bi-menu-button-wide"></i> Menu Constructor
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/settings' %}active{% endif %}" href="/admin/settings">
+                            <i class="bi bi-gear"></i> Settings
+                        </a>
+                    </li>
+                    <li class="nav-item mt-3">
+                        <a class="nav-link text-danger" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+        {% endblock %}
+        
+        <!-- Main Content Wrapper -->
+        <div class="main-content-wrapper">
+            <!-- Mobile Header -->
+            <div class="mobile-header">
+                <button class="mobile-menu-toggle" onclick="toggleSidebar()" aria-label="Toggle menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <h1 class="mobile-header-title">
+                    <i class="bi bi-robot"></i> Inviter Bot
+                </h1>
+            </div>
             
-            <main class="col-md-10 ms-sm-auto main-content">
+            <!-- Main Content -->
+            <main class="main-content">
                 {% block content %}{% endblock %}
             </main>
         </div>
@@ -138,6 +263,26 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Mobile sidebar toggle
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('show');
+            overlay.classList.toggle('show');
+        }
+        
+        // Close sidebar when clicking on a link (mobile only)
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarLinks = document.querySelectorAll('.sidebar .nav-link');
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth <= 768) {
+                        toggleSidebar();
+                    }
+                });
+            });
+        });
+        
         // Global toast notification function
         function showNotification(message, type = 'info') {
             const toastContainer = document.querySelector('.toast-container');
