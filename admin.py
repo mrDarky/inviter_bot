@@ -1720,10 +1720,10 @@ async def create_channel_invite_link(
         # Parse channel_id: could be numeric ID or username
         # Try to convert to int, if it fails, treat as username
         try:
-            parsed_channel_id = int(channel_id)
+            channel_identifier = int(channel_id)
         except ValueError:
             # It's a username, keep it as string
-            parsed_channel_id = channel_id
+            channel_identifier = channel_id
         
         # Create Pyrogram client
         client = Client(
@@ -1737,10 +1737,13 @@ async def create_channel_invite_link(
             
             # Get channel info - this will validate access
             try:
-                chat = await client.get_chat(parsed_channel_id)
+                chat = await client.get_chat(channel_identifier)
             except BadRequest:
                 await client.stop()
-                return {"status": "error", "message": "Invalid channel ID or username, or bot doesn't have access to this channel"}
+                return {
+                    "status": "error", 
+                    "message": "Invalid channel ID or username. Please use numeric ID (e.g., -1001234567890) or username (e.g., @channelname). Ensure the session has access to this channel."
+                }
             
             # Create invite link - use chat.id for consistency
             invite_link = await client.create_chat_invite_link(
