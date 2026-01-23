@@ -18,7 +18,8 @@ import shutil
 from pyrogram import Client
 from pyrogram.errors import (
     SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired,
-    PasswordHashInvalid, FloodWait, BadRequest
+    PasswordHashInvalid, FloodWait, BadRequest, ChannelInvalid, 
+    ChannelPrivate, PeerIdInvalid, UsernameInvalid, UsernameNotOccupied
 )
 from pyrogram.enums import ChatMemberStatus
 
@@ -1738,11 +1739,29 @@ async def create_channel_invite_link(
             # Get channel info - this will validate access
             try:
                 chat = await client.get_chat(channel_identifier)
-            except BadRequest:
+            except (UsernameInvalid, UsernameNotOccupied):
                 await client.stop()
                 return {
                     "status": "error", 
-                    "message": "Invalid channel ID or username. Please use numeric ID (e.g., -1001234567890) or username (e.g., @channelname). Ensure the session has access to this channel."
+                    "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
+                }
+            except (ChannelInvalid, PeerIdInvalid):
+                await client.stop()
+                return {
+                    "status": "error", 
+                    "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890)."
+                }
+            except ChannelPrivate:
+                await client.stop()
+                return {
+                    "status": "error", 
+                    "message": "Cannot access this channel. The channel is private or the session doesn't have access to it."
+                }
+            except BadRequest as e:
+                await client.stop()
+                return {
+                    "status": "error", 
+                    "message": f"Invalid channel ID or username: {str(e)}. Please use numeric ID (e.g., -1001234567890) or username (e.g., @channelname)."
                 }
             
             # Create invite link - use chat.id for consistency
