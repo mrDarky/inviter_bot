@@ -1736,11 +1736,15 @@ async def create_channel_invite_link(
             await client.start()
             
             # Get channel info - this will validate access
-            chat = await client.get_chat(parsed_channel_id)
+            try:
+                chat = await client.get_chat(parsed_channel_id)
+            except BadRequest:
+                await client.stop()
+                return {"status": "error", "message": "Invalid channel ID or username, or bot doesn't have access to this channel"}
             
-            # Create invite link
+            # Create invite link - use chat.id for consistency
             invite_link = await client.create_chat_invite_link(
-                chat_id=parsed_channel_id,
+                chat_id=chat.id,
                 name=name,
                 expire_date=expire_date,
                 member_limit=member_limit,
