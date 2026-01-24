@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import json
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, ChatMemberUpdatedFilter, IS_MEMBER, IS_NOT_MEMBER
@@ -8,7 +9,6 @@ from aiogram.types import ChatMemberUpdated, ChatJoinRequest, ReplyKeyboardMarku
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import json
 
 # Load environment variables
 load_dotenv()
@@ -187,7 +187,8 @@ async def cmd_start(message: types.Message):
     questions = await db.get_user_questions(active_only=True)
     auto_approve_mode = await db.get_setting('auto_approve_mode')
     
-    if questions and auto_approve_mode in ['after_messages', 'immediate']:
+    # Only start onboarding if mode is 'after_messages' and questions exist
+    if questions and auto_approve_mode == 'after_messages':
         # Start onboarding process
         await message.answer("Welcome! Please answer a few questions to get started.")
         await start_user_onboarding(user.id)
@@ -715,10 +716,9 @@ async def send_question(user_id: int, question: dict):
             # Parse options and create inline keyboard
             options = question.get('options', '')
             if options:
-                import json
                 try:
                     options_list = json.loads(options) if options.startswith('[') else options.split(',')
-                except:
+                except (json.JSONDecodeError, ValueError):
                     options_list = options.split(',')
                 
                 buttons = []
