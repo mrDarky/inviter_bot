@@ -153,6 +153,20 @@
                         </label>
                     </div>
                     
+                    <div class="mb-3">
+                        <label class="form-label">Auto-Approve Mode</label>
+                        <select class="form-select" name="auto_approve_mode">
+                            <option value="manual" {{ 'selected' if settings.auto_approve_mode == 'manual' or not settings.auto_approve_mode else '' }}>Manual Approval (Default)</option>
+                            <option value="immediate" {{ 'selected' if settings.auto_approve_mode == 'immediate' else '' }}>Immediate Auto-Approve</option>
+                            <option value="after_messages" {{ 'selected' if settings.auto_approve_mode == 'after_messages' else '' }}>Auto-Approve After Questions</option>
+                        </select>
+                        <small class="text-muted">
+                            <strong>Manual:</strong> Admins must approve join requests manually.<br>
+                            <strong>Immediate:</strong> Join requests are automatically approved immediately.<br>
+                            <strong>After Questions:</strong> Users are approved after completing onboarding questions.
+                        </small>
+                    </div>
+                    
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" name="enable_welcome_message" id="enableWelcome" {{ 'checked' if settings.enable_welcome_message == 'true' or not settings.enable_welcome_message else '' }}>
                         <label class="form-check-label" for="enableWelcome">

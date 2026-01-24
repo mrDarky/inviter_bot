@@ -2026,6 +2026,82 @@ async def delete_channel_invite_link_route(link_id: int, _: None = Depends(requi
         return {"status": "error", "message": str(e)}
 
 
+# User Questions Page and API
+@app.get("/admin/questions", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def questions_page(request: Request):
+    """Questions management page"""
+    questions = await db.get_user_questions(active_only=False)
+    return templates.TemplateResponse("questions.html", {
+        "request": request,
+        "questions": questions
+    })
+
+
+class QuestionRequest(BaseModel):
+    question_text: str
+    question_type: str  # text or buttons
+    options: Optional[str] = None
+    order_number: int = 0
+    is_required: int = 1
+
+
+@app.post("/api/questions/add")
+async def add_question(request: QuestionRequest, _: None = Depends(require_auth)):
+    """Add a new question"""
+    await db.add_user_question(
+        question_text=request.question_text,
+        question_type=request.question_type,
+        options=request.options,
+        is_required=request.is_required,
+        order_number=request.order_number
+    )
+    return {"status": "success", "message": "Question added successfully"}
+
+
+@app.get("/api/questions/{question_id}")
+async def get_question(question_id: int, _: None = Depends(require_auth)):
+    """Get a specific question"""
+    question = await db.get_user_question(question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
+
+
+@app.put("/api/questions/{question_id}")
+async def update_question(question_id: int, request: QuestionRequest, _: None = Depends(require_auth)):
+    """Update a question"""
+    await db.update_user_question(
+        question_id=question_id,
+        question_text=request.question_text,
+        question_type=request.question_type,
+        options=request.options,
+        is_required=request.is_required,
+        order_number=request.order_number
+    )
+    return {"status": "success", "message": "Question updated successfully"}
+
+
+@app.delete("/api/questions/{question_id}")
+async def delete_question(question_id: int, _: None = Depends(require_auth)):
+    """Delete a question"""
+    await db.delete_user_question(question_id)
+    return {"status": "success", "message": "Question deleted successfully"}
+
+
+@app.post("/api/questions/{question_id}/toggle")
+async def toggle_question(question_id: int, _: None = Depends(require_auth)):
+    """Toggle question active status"""
+    await db.toggle_user_question(question_id)
+    return {"status": "success", "message": "Question status toggled"}
+
+
+@app.get("/api/users/{user_id}/answers")
+async def get_user_answers(user_id: int, _: None = Depends(require_auth)):
+    """Get answers for a specific user"""
+    answers = await db.get_user_answers(user_id)
+    return {"answers": answers}
+
+
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("API_HOST", "0.0.0.0")
