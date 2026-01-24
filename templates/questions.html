@@ -204,11 +204,18 @@ async function submitAddQuestion() {
     const form = document.getElementById('addQuestionForm');
     const formData = new FormData(form);
     
+    // Validate order number
+    const orderNumber = parseInt(formData.get('order_number'));
+    if (isNaN(orderNumber) || orderNumber < 0) {
+        showNotification('Order number must be a non-negative integer', 'error');
+        return;
+    }
+    
     const data = {
         question_text: formData.get('question_text'),
         question_type: formData.get('question_type'),
         options: formData.get('options') || null,
-        order_number: parseInt(formData.get('order_number')),
+        order_number: orderNumber,
         is_required: document.getElementById('addIsRequired').checked ? 1 : 0
     };
     
@@ -263,11 +270,18 @@ async function submitEditQuestion() {
     const formData = new FormData(form);
     const questionId = formData.get('question_id');
     
+    // Validate order number
+    const orderNumber = parseInt(formData.get('order_number'));
+    if (isNaN(orderNumber) || orderNumber < 0) {
+        showNotification('Order number must be a non-negative integer', 'error');
+        return;
+    }
+    
     const data = {
         question_text: formData.get('question_text'),
         question_type: formData.get('question_type'),
         options: formData.get('options') || null,
-        order_number: parseInt(formData.get('order_number')),
+        order_number: orderNumber,
         is_required: document.getElementById('editIsRequired').checked ? 1 : 0
     };
     
