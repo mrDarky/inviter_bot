@@ -183,26 +183,57 @@ async def cmd_start(message: types.Message):
     await db.log_action(user.id, "start", action_data)
     logger.info(f"User {user.id} started the bot with invite code: {invite_code}")
     
-    # Build main menu
-    menu = await build_main_menu()
+    # Check if onboarding questions are configured
+    questions = await db.get_user_questions(active_only=True)
+    auto_approve_mode = await db.get_setting('auto_approve_mode')
     
-    await message.answer(
-        "Use the menu below to interact with the bot.",
-        reply_markup=menu
-    )
+    if questions and auto_approve_mode in ['after_messages', 'immediate']:
+        # Start onboarding process
+        await message.answer("Welcome! Please answer a few questions to get started.")
+        await start_user_onboarding(user.id)
+    else:
+        # Build main menu
+        menu = await build_main_menu()
+        
+        await message.answer(
+            "Use the menu below to interact with the bot.",
+            reply_markup=menu
+        )
 
 
 @dp.message(F.text)
-async def handle_menu_message(message: types.Message):
-    """Handle menu button clicks"""
+async def handle_text_message(message: types.Message):
+    """Handle text messages - both menu clicks and question answers"""
     try:
+        user_id = message.from_user.id
+        
+        # Check if user is in onboarding state waiting for text answer
+        onboarding_state = await db.get_user_onboarding_state(user_id)
+        
+        if onboarding_state and onboarding_state['current_question_id']:
+            question_id = onboarding_state['current_question_id']
+            question = await db.get_user_question(question_id)
+            
+            if question and question['question_type'] == 'text':
+                # Store the answer
+                await db.add_user_answer(user_id, question_id, message.text)
+                await db.log_action(user_id, "answered_question", f"Question ID: {question_id}")
+                
+                await message.answer("✓ Answer recorded")
+                
+                # Send next question or complete onboarding
+                await send_next_question(user_id, question_id)
+                return
+        
+        # If not in onboarding, check for menu items
         menu_items = await db.get_bot_menu()
         for item in menu_items:
             if item['button_name'] == message.text:
                 await handle_menu_action(message, item)
                 return
+                
     except Exception as e:
-        logger.error(f"Error handling menu message: {e}")
+        logger.error(f"Error handling text message: {e}")
 
 
 @dp.chat_member(ChatMemberUpdatedFilter(IS_NOT_MEMBER >> IS_MEMBER))
@@ -254,6 +285,37 @@ async def on_join_request(update: ChatJoinRequest):
     await db.log_action(user.id, "join_request", f"Join request for channel: {chat.title}")
     
     logger.info(f"User {user.id} ({user.username}) requested to join channel {chat.title}")
+    
+    # Check auto-approve mode
+    auto_approve_mode = await db.get_setting('auto_approve_mode')
+    
+    if auto_approve_mode == 'immediate':
+        # Auto-approve immediately
+        try:
+            await bot.approve_chat_join_request(chat.id, user.id)
+            # Get the join request we just created
+            join_requests = await db.get_join_requests_by_user(user.id)
+            pending_req = next((req for req in join_requests if req['chat_id'] == chat.id and req['status'] == 'pending'), None)
+            if pending_req:
+                await db.approve_join_request(pending_req['id'])
+            await db.log_action(user.id, "auto_approved", "Immediate approval")
+            logger.info(f"User {user.id} auto-approved immediately")
+        except Exception as e:
+            logger.warning(f"Could not auto-approve user {user.id} immediately: {e}")
+    elif auto_approve_mode == 'after_messages':
+        # Auto-approve will happen after onboarding is complete
+        # Send initial message to user
+        try:
+            await bot.send_message(
+                user.id,
+                "Thank you for your interest! Please complete the questions below to proceed."
+            )
+            # Start onboarding if questions exist
+            questions = await db.get_user_questions(active_only=True)
+            if questions:
+                await start_user_onboarding(user.id)
+        except Exception as e:
+            logger.warning(f"Could not send onboarding message to user {user.id}: {e}")
 
 
 async def send_message_to_users(user_ids: list, text: str, parse_mode: str = None):
@@ -403,8 +465,8 @@ async def send_static_messages():
                 media_file_id = msg.get('media_file_id')
                 buttons_config = msg.get('buttons_config')
                 
-                # Parse buttons if configured
-                reply_markup = await parse_buttons_config(buttons_config) if buttons_config else None
+                # Create markup with buttons and viewed button
+                reply_markup = await create_message_markup(msg['id'], buttons_config)
                 
                 try:
                     # Send based on media type
@@ -492,6 +554,211 @@ async def send_static_messages():
                     logger.warning(f"Could not send static message to user {user['user_id']}: {e}")
     except Exception as e:
         logger.error(f"Error sending static messages: {e}")
+
+
+@dp.callback_query(F.data.startswith("viewed_"))
+async def handle_viewed_button(callback: types.CallbackQuery):
+    """Handle 'viewed' button callback"""
+    try:
+        # Extract static message ID from callback data
+        msg_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+        
+        # Log the action
+        await db.log_action(user_id, "viewed_message", f"Static message ID: {msg_id}")
+        
+        # Update button to show it was viewed
+        await callback.answer("Message marked as viewed ✓")
+        
+        # Edit the message to update button text
+        new_markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✓ Viewed", callback_data=f"already_viewed_{msg_id}")]
+        ])
+        await callback.message.edit_reply_markup(reply_markup=new_markup)
+        
+        # Check if there's a next message to send
+        await send_next_message_if_available(user_id, msg_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling viewed button: {e}")
+        await callback.answer("Error processing request")
+
+
+@dp.callback_query(F.data.startswith("answer_"))
+async def handle_answer_button(callback: types.CallbackQuery):
+    """Handle answer button callback for questions"""
+    try:
+        # Extract question ID and answer from callback data
+        # Format: answer_<question_id>_<answer_value>
+        parts = callback.data.split("_", 2)
+        question_id = int(parts[1])
+        answer_value = parts[2] if len(parts) > 2 else ""
+        user_id = callback.from_user.id
+        
+        # Store the answer
+        await db.add_user_answer(user_id, question_id, answer_value)
+        await db.log_action(user_id, "answered_question", f"Question ID: {question_id}, Answer: {answer_value}")
+        
+        # Update button to show answer was recorded
+        await callback.answer(f"Answer recorded: {answer_value} ✓")
+        
+        # Send next question or complete onboarding
+        await send_next_question(user_id, question_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling answer button: {e}")
+        await callback.answer("Error processing answer")
+
+
+async def send_next_message_if_available(user_id: int, current_msg_id: int):
+    """Send next static message if available after current one is viewed"""
+    try:
+        # Get current message info
+        static_messages = await db.get_static_messages()
+        current_msg = next((msg for msg in static_messages if msg['id'] == current_msg_id), None)
+        
+        if not current_msg:
+            return
+        
+        # Find next message in sequence (same day or next day)
+        next_msg = None
+        for msg in static_messages:
+            if msg['is_active'] and msg['day_number'] == current_msg['day_number']:
+                # Check if there's another message on same day
+                already_sent = await db.is_static_message_sent(user_id, msg['id'])
+                if not already_sent and msg['id'] > current_msg_id:
+                    next_msg = msg
+                    break
+        
+        if next_msg:
+            # Send the next message immediately
+            text = next_msg['html_text'] if next_msg['html_text'] else next_msg['text']
+            parse_mode = "HTML" if next_msg['html_text'] else None
+            buttons_config = next_msg.get('buttons_config')
+            
+            # Add viewed button
+            reply_markup = await create_message_markup(next_msg['id'], buttons_config)
+            
+            await bot.send_message(user_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+            await db.mark_static_message_sent(user_id, next_msg['id'])
+            await db.log_action(user_id, "received_static_message", f"Message ID: {next_msg['id']}")
+            
+    except Exception as e:
+        logger.error(f"Error sending next message: {e}")
+
+
+async def create_message_markup(msg_id: int, buttons_config: str = None):
+    """Create inline keyboard markup with buttons and viewed button"""
+    rows = []
+    
+    # Add configured buttons if any
+    if buttons_config:
+        markup = await parse_buttons_config(buttons_config)
+        if markup:
+            rows.extend(markup.inline_keyboard)
+    
+    # Add viewed button
+    rows.append([InlineKeyboardButton(text="👁 Mark as Viewed", callback_data=f"viewed_{msg_id}")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_next_question(user_id: int, current_question_id: int):
+    """Send next question in the onboarding sequence"""
+    try:
+        questions = await db.get_user_questions(active_only=True)
+        
+        # Find next question
+        current_index = next((i for i, q in enumerate(questions) if q['id'] == current_question_id), -1)
+        
+        if current_index >= 0 and current_index < len(questions) - 1:
+            # Send next question
+            next_question = questions[current_index + 1]
+            await send_question(user_id, next_question)
+        else:
+            # All questions answered, complete onboarding
+            await db.complete_user_onboarding(user_id)
+            await db.set_user_onboarding_state(user_id, current_question_id=None)
+            
+            # Check if auto-approve is enabled and approve user
+            auto_approve_mode = await db.get_setting('auto_approve_mode')
+            if auto_approve_mode == 'after_messages':
+                # Check if user has pending join requests
+                join_requests = await db.get_join_requests_by_user(user_id)
+                pending_requests = [req for req in join_requests if req['status'] == 'pending']
+                
+                for req in pending_requests:
+                    try:
+                        await bot.approve_chat_join_request(req['chat_id'], user_id)
+                        await db.approve_join_request(req['id'])
+                        await db.log_action(user_id, "auto_approved", f"After onboarding completion")
+                    except Exception as e:
+                        logger.warning(f"Could not auto-approve join request for user {user_id}: {e}")
+            
+            await bot.send_message(user_id, "✅ Thank you for completing the onboarding! Welcome to our community.")
+            
+    except Exception as e:
+        logger.error(f"Error sending next question: {e}")
+
+
+async def send_question(user_id: int, question: dict):
+    """Send a question to user"""
+    try:
+        question_text = question['question_text']
+        question_type = question['question_type']
+        question_id = question['id']
+        
+        # Update user state
+        await db.set_user_onboarding_state(user_id, current_question_id=question_id)
+        
+        if question_type == 'buttons':
+            # Parse options and create inline keyboard
+            options = question.get('options', '')
+            if options:
+                import json
+                try:
+                    options_list = json.loads(options) if options.startswith('[') else options.split(',')
+                except:
+                    options_list = options.split(',')
+                
+                buttons = []
+                for i, option in enumerate(options_list):
+                    option = option.strip()
+                    if option:
+                        button = InlineKeyboardButton(
+                            text=option,
+                            callback_data=f"answer_{question_id}_{option}"
+                        )
+                        buttons.append([button])
+                
+                markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+                await bot.send_message(user_id, question_text, reply_markup=markup)
+            else:
+                await bot.send_message(user_id, question_text)
+        else:
+            # Text input question
+            await bot.send_message(user_id, f"{question_text}\n\nPlease type your answer:")
+            
+    except Exception as e:
+        logger.error(f"Error sending question: {e}")
+
+
+async def start_user_onboarding(user_id: int):
+    """Start user onboarding with questions"""
+    try:
+        questions = await db.get_user_questions(active_only=True)
+        
+        if questions:
+            # Initialize onboarding state
+            await db.set_user_onboarding_state(user_id, current_question_id=0)
+            
+            # Send first question
+            await send_question(user_id, questions[0])
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error starting onboarding: {e}")
+        return False
 
 
 async def main():
