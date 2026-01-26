@@ -1599,14 +1599,14 @@ async def pyrogram_check_access(
             # Try normalized ID
             try:
                 chat = await client.get_chat(normalized_channel_id)
-            except (BadRequest, ChannelInvalid, PeerIdInvalid) as e:
+            except (BadRequest, ChannelInvalid, ChannelPrivate, PeerIdInvalid) as e:
                 last_error = e
                 # If normalized ID fails and it's different from original, try original
                 if normalized_channel_id != request.channel_id:
                     try:
                         chat = await client.get_chat(request.channel_id)
                         last_error = None
-                    except (BadRequest, ChannelInvalid, PeerIdInvalid) as e2:
+                    except (BadRequest, ChannelInvalid, ChannelPrivate, PeerIdInvalid) as e2:
                         last_error = e2
             
             if chat is None:

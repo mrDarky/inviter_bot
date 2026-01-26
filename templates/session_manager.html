@@ -627,20 +627,27 @@ async function checkAccess() {
         if (data.status === 'success') {
             resultEl.className = 'alert alert-success';
             
-            let html = `<i class="bi bi-check-circle"></i> <strong>${data.message}</strong><br><br>`;
+            // Helper function to escape HTML
+            const escapeHtml = (text) => {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            };
+            
+            let html = `<i class="bi bi-check-circle"></i> <strong>${escapeHtml(data.message)}</strong><br><br>`;
             
             // Add chat info
             if (data.chat_info) {
                 html += '<strong>Channel Information:</strong><br>';
                 html += `<ul class="mb-2">`;
-                html += `<li><strong>Title:</strong> ${data.chat_info.title}</li>`;
-                html += `<li><strong>Type:</strong> ${data.chat_info.type}</li>`;
+                html += `<li><strong>Title:</strong> ${escapeHtml(data.chat_info.title)}</li>`;
+                html += `<li><strong>Type:</strong> ${escapeHtml(data.chat_info.type)}</li>`;
                 if (data.chat_info.username) {
-                    html += `<li><strong>Username:</strong> ${data.chat_info.username}</li>`;
+                    html += `<li><strong>Username:</strong> ${escapeHtml(data.chat_info.username)}</li>`;
                 }
-                html += `<li><strong>ID:</strong> ${data.chat_info.id}</li>`;
+                html += `<li><strong>ID:</strong> ${escapeHtml(String(data.chat_info.id))}</li>`;
                 if (data.chat_info.members_count) {
-                    html += `<li><strong>Members:</strong> ${data.chat_info.members_count}</li>`;
+                    html += `<li><strong>Members:</strong> ${escapeHtml(String(data.chat_info.members_count))}</li>`;
                 }
                 html += '</ul>';
             }
@@ -649,7 +656,7 @@ async function checkAccess() {
             if (data.permissions) {
                 html += '<strong>Your Permissions:</strong><br>';
                 html += `<ul class="mb-0">`;
-                html += `<li><strong>Status:</strong> ${data.permissions.status}</li>`;
+                html += `<li><strong>Status:</strong> ${escapeHtml(data.permissions.status)}</li>`;
                 
                 if (data.permissions.can_invite_users !== undefined) {
                     html += `<li><strong>Can Invite Users:</strong> ${data.permissions.can_invite_users ? '✓ Yes' : '✗ No'}</li>`;
@@ -670,7 +677,10 @@ async function checkAccess() {
             showNotification('Access check completed successfully', 'success');
         } else {
             resultEl.className = 'alert alert-danger';
-            resultEl.innerHTML = `<i class="bi bi-x-circle"></i> ${data.message}`;
+            // Use textContent for error messages to prevent XSS
+            resultEl.innerHTML = '<i class="bi bi-x-circle"></i> ';
+            const errorText = document.createTextNode(data.message || 'Failed to check access');
+            resultEl.appendChild(errorText);
             showNotification(data.message || 'Failed to check access', 'error');
         }
     } catch (error) {
