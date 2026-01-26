@@ -17,7 +17,7 @@
                     <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
                     <option value="approved" {% if status == 'approved' %}selected{% endif %}>Approved</option>
                     <option value="denied" {% if status == 'denied' %}selected{% endif %}>Denied</option>
-                    <option value="" {% if not status %}selected{% endif %}>All</option>
+                    <option value="" {% if status == '' or status is none %}selected{% endif %}>All</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -163,7 +163,7 @@
                 {% if date_from %}{% set _ = filter_params.append('date_from=' + date_from) %}{% endif %}
                 {% if date_to %}{% set _ = filter_params.append('date_to=' + date_to) %}{% endif %}
                 {% if older_than_count %}{% set _ = filter_params.append('older_than_count=' + older_than_count|string) %}{% endif %}
-                {% set filter_query = '&' + '&'.join(filter_params) if filter_params else '' %}
+                {% set filter_query = ('&' + '&'.join(filter_params)) if filter_params else '' %}
                 
                 {% if page > 1 %}
                 <li class="page-item">
