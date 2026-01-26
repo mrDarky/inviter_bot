@@ -1774,13 +1774,8 @@ async def create_channel_invite_link(
         if not session_data or not session_data['is_active']:
             return {"status": "error", "message": "Session not found or inactive"}
         
-        # Parse channel_id: could be numeric ID or username
-        # Try to convert to int, if it fails, treat as username
-        try:
-            channel_identifier = int(channel_id)
-        except ValueError:
-            # It's a username, keep it as string
-            channel_identifier = channel_id
+        # Normalize channel ID
+        normalized_channel_id = normalize_channel_id(channel_id)
         
         # Create Pyrogram client
         client = Client(
@@ -1793,31 +1788,62 @@ async def create_channel_invite_link(
             await client.start()
             
             # Get channel info - this will validate access
+            # Try normalized ID first, then original if different
+            chat = None
+            last_error = None
+            
             try:
-                chat = await client.get_chat(channel_identifier)
-            except (UsernameInvalid, UsernameNotOccupied):
-                await client.stop()
-                return {
-                    "status": "error", 
-                    "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
-                }
-            except (ChannelInvalid, PeerIdInvalid):
-                await client.stop()
-                return {
-                    "status": "error", 
-                    "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890)."
-                }
+                chat = await client.get_chat(normalized_channel_id)
+            except (UsernameInvalid, UsernameNotOccupied) as e:
+                last_error = e
+                if normalized_channel_id != channel_id:
+                    try:
+                        chat = await client.get_chat(channel_id)
+                        last_error = None
+                    except (UsernameInvalid, UsernameNotOccupied) as e2:
+                        last_error = e2
+                        await client.stop()
+                        return {
+                            "status": "error", 
+                            "message": f"Invalid username. Please check the username format (e.g., @channelname) and ensure it exists. Error: {str(e2)}"
+                        }
+                else:
+                    await client.stop()
+                    return {
+                        "status": "error", 
+                        "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
+                    }
+            except (ChannelInvalid, PeerIdInvalid, BadRequest) as e:
+                last_error = e
+                if normalized_channel_id != channel_id:
+                    try:
+                        chat = await client.get_chat(channel_id)
+                        last_error = None
+                    except (ChannelInvalid, PeerIdInvalid, BadRequest) as e2:
+                        last_error = e2
+                        await client.stop()
+                        return {
+                            "status": "error", 
+                            "message": f"Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username. Error: {str(e2)}"
+                        }
+                else:
+                    await client.stop()
+                    return {
+                        "status": "error", 
+                        "message": f"Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890). Error: {str(e)}"
+                    }
             except ChannelPrivate:
                 await client.stop()
                 return {
                     "status": "error", 
                     "message": "Cannot access this channel. The channel is private or the session doesn't have access to it."
                 }
-            except BadRequest as e:
+            
+            if chat is None:
                 await client.stop()
                 return {
-                    "status": "error", 
-                    "message": f"Invalid channel ID or username: {str(e)}. Please use numeric ID (e.g., -1001234567890) or username (e.g., @channelname)."
+                    "status": "error",
+                    "message": "Unable to access channel. Please verify the channel ID and your access permissions."
                 }
             
             # Create invite link - use chat.id for consistency
