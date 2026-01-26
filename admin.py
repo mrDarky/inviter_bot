@@ -425,6 +425,30 @@ async def menu_constructor_page(request: Request):
     })
 
 
+def parse_optional_int(value: Optional[str], allow_negative: bool = True) -> Optional[int]:
+    """
+    Parse an optional integer from a string query parameter.
+    Returns None if value is None, empty, whitespace, or invalid.
+    
+    Args:
+        value: The string value to parse
+        allow_negative: Whether to allow negative integers (default: True)
+    
+    Returns:
+        Parsed integer or None
+    """
+    if not value or not value.strip():
+        return None
+    
+    try:
+        parsed = int(value)
+        if not allow_negative and parsed < 0:
+            return None
+        return parsed
+    except ValueError:
+        return None
+
+
 @app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
 async def invite_requests_page(
     request: Request, 
@@ -444,19 +468,8 @@ async def invite_requests_page(
         status = None
     
     # Convert empty strings to None and parse integer values
-    chat_id_int = None
-    if chat_id and chat_id.strip():
-        try:
-            chat_id_int = int(chat_id)
-        except ValueError:
-            pass  # Invalid value, treat as None
-    
-    older_than_count_int = None
-    if older_than_count and older_than_count.strip():
-        try:
-            older_than_count_int = int(older_than_count)
-        except ValueError:
-            pass  # Invalid value, treat as None
+    chat_id_int = parse_optional_int(chat_id, allow_negative=True)
+    older_than_count_int = parse_optional_int(older_than_count, allow_negative=False)
     
     requests = await db.get_join_requests(
         status=status, 
