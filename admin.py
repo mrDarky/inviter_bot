@@ -55,35 +55,41 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
 
+# Telegram channel ID constants
+TELEGRAM_CHANNEL_ID_MIN_LENGTH = 13
+
 
 def normalize_channel_id(channel_id: str) -> str:
     """
     Normalize channel ID to proper format.
     Telegram channel IDs can be provided in different formats:
-    - Full format: -1001234567890 (13 digits with -100 prefix)
+    - Full format: -1001234567890 (13+ digits with -100 prefix)
     - Short format: -100929488 (less than 13 digits)
     - Username: @channelname or channelname
     
-    This function attempts to convert short IDs to full format.
+    This function normalizes the format for consistency.
+    Note: Both normalized and original IDs should be tried when making API calls.
     """
-    # If it's not a numeric ID, return as-is (username)
-    if not channel_id or not channel_id.lstrip('-').isdigit():
+    # If it's empty, return as-is
+    if not channel_id:
         return channel_id
     
-    # Convert to int to normalize
+    # If it's a username (starts with @ or contains non-digit/non-hyphen characters), return as-is
+    if channel_id.startswith('@') or not all(c.isdigit() or c == '-' for c in channel_id):
+        return channel_id
+    
+    # If it's a numeric ID (starts with - and rest are digits)
+    if channel_id.startswith('-') and channel_id[1:].isdigit():
+        # Already normalized
+        return channel_id
+    
+    # Try to convert to int to normalize
     try:
         channel_id_int = int(channel_id)
+        return str(channel_id_int)
     except ValueError:
+        # Not a valid numeric ID, return as-is
         return channel_id
-    
-    # If it's already in full format (starts with -100 and has correct length), return as-is
-    channel_id_str = str(channel_id_int)
-    if channel_id_str.startswith('-100') and len(channel_id_str) >= 13:
-        return channel_id_str
-    
-    # If it's a short format (like -100929488), it might need conversion
-    # However, we should try both the original and see what works
-    return channel_id_str
 
 
 class DatabaseLogHandler(logging.Handler):
@@ -1480,11 +1486,7 @@ async def pyrogram_load_requests(
             
             if chat is None:
                 await client.stop()
-                error_msg = "Invalid channel ID or username. "
-                if last_error:
-                    error_msg += f"Please verify that: 1) The channel ID is correct (format: -1001234567890), 2) The channel exists, 3) You have access to this channel. Error: {str(last_error)}"
-                else:
-                    error_msg += "Please verify that the channel ID is correct and you have access to it."
+                error_msg = "Invalid channel ID or username. Please verify that: 1) The channel ID is correct (format: -1001234567890 for numeric IDs or @username for usernames), 2) The channel exists, 3) You have access to this channel."
                 return {"status": "error", "message": error_msg}
             
             # Check if user has permission
@@ -1805,7 +1807,7 @@ async def create_channel_invite_link(
                         await client.stop()
                         return {
                             "status": "error", 
-                            "message": f"Invalid username. Please check the username format (e.g., @channelname) and ensure it exists. Error: {str(e2)}"
+                            "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
                         }
                 else:
                     await client.stop()
@@ -1824,13 +1826,13 @@ async def create_channel_invite_link(
                         await client.stop()
                         return {
                             "status": "error", 
-                            "message": f"Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username. Error: {str(e2)}"
+                            "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username (e.g., @channelname)."
                         }
                 else:
                     await client.stop()
                     return {
                         "status": "error", 
-                        "message": f"Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890). Error: {str(e)}"
+                        "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username (e.g., @channelname)."
                     }
             except ChannelPrivate:
                 await client.stop()
