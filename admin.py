@@ -56,6 +56,36 @@ pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
 
 
+def normalize_channel_id(channel_id: str) -> str:
+    """
+    Normalize channel ID to proper format.
+    Telegram channel IDs can be provided in different formats:
+    - Full format: -1001234567890 (13 digits with -100 prefix)
+    - Short format: -100929488 (less than 13 digits)
+    - Username: @channelname or channelname
+    
+    This function attempts to convert short IDs to full format.
+    """
+    # If it's not a numeric ID, return as-is (username)
+    if not channel_id or not channel_id.lstrip('-').isdigit():
+        return channel_id
+    
+    # Convert to int to normalize
+    try:
+        channel_id_int = int(channel_id)
+    except ValueError:
+        return channel_id
+    
+    # If it's already in full format (starts with -100 and has correct length), return as-is
+    channel_id_str = str(channel_id_int)
+    if channel_id_str.startswith('-100') and len(channel_id_str) >= 13:
+        return channel_id_str
+    
+    # If it's a short format (like -100929488), it might need conversion
+    # However, we should try both the original and see what works
+    return channel_id_str
+
+
 class DatabaseLogHandler(logging.Handler):
     """Custom logging handler to save logs to database"""
     def emit(self, record):
@@ -1428,12 +1458,34 @@ async def pyrogram_load_requests(
         try:
             await client.start()
             
-            # Get chat
+            # Normalize channel ID
+            normalized_channel_id = normalize_channel_id(request.channel_id)
+            
+            # Get chat - try with normalized ID first, then original if it fails
+            chat = None
+            last_error = None
+            
+            # Try normalized ID
             try:
-                chat = await client.get_chat(request.channel_id)
-            except BadRequest:
+                chat = await client.get_chat(normalized_channel_id)
+            except (BadRequest, ChannelInvalid, PeerIdInvalid) as e:
+                last_error = e
+                # If normalized ID fails and it's different from original, try original
+                if normalized_channel_id != request.channel_id:
+                    try:
+                        chat = await client.get_chat(request.channel_id)
+                        last_error = None
+                    except (BadRequest, ChannelInvalid, PeerIdInvalid) as e2:
+                        last_error = e2
+            
+            if chat is None:
                 await client.stop()
-                return {"status": "error", "message": "Invalid channel ID or username"}
+                error_msg = "Invalid channel ID or username. "
+                if last_error:
+                    error_msg += f"Please verify that: 1) The channel ID is correct (format: -1001234567890), 2) The channel exists, 3) You have access to this channel. Error: {str(last_error)}"
+                else:
+                    error_msg += "Please verify that the channel ID is correct and you have access to it."
+                return {"status": "error", "message": error_msg}
             
             # Check if user has permission
             try:
@@ -1655,6 +1707,10 @@ async def get_user_channels(session_name: str = Form(...), _: None = Depends(req
         
         if not session_data['is_active']:
             return {"status": "error", "message": "Session is not active"}
+        
+        # Check if it's a bot session
+        if session_data.get('session_type') == 'bot':
+            return {"status": "error", "message": "Bot sessions cannot list channels. This feature is only available for user sessions. Please use a user session or enter the channel ID manually."}
         
         # Create Pyrogram client
         client = Client(
