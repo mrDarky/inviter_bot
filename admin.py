@@ -426,21 +426,45 @@ async def menu_constructor_page(request: Request):
 
 
 @app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
-async def invite_requests_page(request: Request, status: str = 'pending', page: int = 1):
+async def invite_requests_page(request: Request, status: str = 'pending', page: int = 1,
+                                chat_id: int = None, date_from: str = None, date_to: str = None,
+                                older_than_count: int = None):
     """Invite requests page"""
     limit = 20
     offset = (page - 1) * limit
     
-    requests = await db.get_join_requests(status=status, limit=limit, offset=offset)
-    total = await db.get_join_request_count(status=status)
+    requests = await db.get_join_requests(
+        status=status, 
+        limit=limit, 
+        offset=offset,
+        chat_id=chat_id,
+        date_from=date_from,
+        date_to=date_to,
+        older_than_count=older_than_count
+    )
+    total = await db.get_join_request_count(
+        status=status,
+        chat_id=chat_id,
+        date_from=date_from,
+        date_to=date_to,
+        older_than_count=older_than_count
+    )
     total_pages = (total + limit - 1) // limit
+    
+    # Get distinct chat IDs for filter dropdown
+    chat_ids = await db.get_distinct_chat_ids()
     
     return templates.TemplateResponse("invite_requests.html", {
         "request": request,
         "requests": requests,
         "page": page,
         "total_pages": total_pages,
-        "status": status
+        "status": status,
+        "chat_ids": chat_ids,
+        "selected_chat_id": chat_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "older_than_count": older_than_count
     })
 
 

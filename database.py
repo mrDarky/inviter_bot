@@ -752,8 +752,10 @@ class Database:
             await db.commit()
             return not exists  # Return True if it was a new insert
     
-    async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0):
-        """Get join requests with optional status filter"""
+    async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0, 
+                                chat_id: int = None, date_from: str = None, date_to: str = None, 
+                                older_than_count: int = None):
+        """Get join requests with optional filters"""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM join_requests WHERE 1=1"
@@ -763,15 +765,37 @@ class Database:
                 query += " AND status = ?"
                 params.append(status)
             
-            query += " ORDER BY request_date DESC LIMIT ? OFFSET ?"
+            if chat_id:
+                query += " AND chat_id = ?"
+                params.append(chat_id)
+            
+            if date_from:
+                query += " AND request_date >= ?"
+                params.append(date_from)
+            
+            if date_to:
+                # Add one day to include the entire end date
+                query += " AND request_date < datetime(?, '+1 day')"
+                params.append(date_to)
+            
+            query += " ORDER BY request_date DESC"
+            
+            # Apply older_than_count filter if specified
+            if older_than_count:
+                query += f" LIMIT -1 OFFSET ?"
+                params.append(older_than_count)
+            
+            query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
             
             async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
     
-    async def get_join_request_count(self, status: str = 'pending'):
-        """Get total join request count with optional status filter"""
+    async def get_join_request_count(self, status: str = 'pending', chat_id: int = None, 
+                                     date_from: str = None, date_to: str = None, 
+                                     older_than_count: int = None):
+        """Get total join request count with optional filters"""
         async with aiosqlite.connect(self.db_path) as db:
             query = "SELECT COUNT(*) FROM join_requests WHERE 1=1"
             params = []
@@ -780,9 +804,28 @@ class Database:
                 query += " AND status = ?"
                 params.append(status)
             
+            if chat_id:
+                query += " AND chat_id = ?"
+                params.append(chat_id)
+            
+            if date_from:
+                query += " AND request_date >= ?"
+                params.append(date_from)
+            
+            if date_to:
+                # Add one day to include the entire end date
+                query += " AND request_date < datetime(?, '+1 day')"
+                params.append(date_to)
+            
             async with db.execute(query, params) as cursor:
                 result = await cursor.fetchone()
-                return result[0]
+                count = result[0]
+            
+            # Apply older_than_count filter if specified
+            if older_than_count and count > older_than_count:
+                return count - older_than_count
+            
+            return count
     
     async def approve_join_request(self, request_id: int):
         """Approve a join request"""
@@ -840,6 +883,20 @@ class Database:
                 "SELECT * FROM join_requests WHERE user_id = ? ORDER BY request_date DESC",
                 (user_id,)
             ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_distinct_chat_ids(self):
+        """Get distinct chat_ids from join requests with basic info"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT DISTINCT chat_id, 
+                       COUNT(*) as request_count
+                FROM join_requests 
+                GROUP BY chat_id 
+                ORDER BY request_count DESC
+            """) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
     
