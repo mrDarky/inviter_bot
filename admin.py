@@ -1611,7 +1611,13 @@ async def pyrogram_check_access(
             
             if chat is None:
                 await client.stop()
-                error_msg = "Invalid channel ID or username. Channel not found or you don't have access to it."
+                # Provide more specific error message based on the exception type
+                if last_error and isinstance(last_error, ChannelPrivate):
+                    error_msg = "Access denied: This is a private channel and you don't have permission to access it."
+                elif last_error and isinstance(last_error, (ChannelInvalid, PeerIdInvalid)):
+                    error_msg = "Invalid channel: The channel ID or username is incorrect or the channel doesn't exist."
+                else:
+                    error_msg = "Unable to access channel: Please verify the channel ID/username and ensure you have access to it."
                 return {"status": "error", "message": error_msg}
             
             # Check if user/bot has access and get permissions

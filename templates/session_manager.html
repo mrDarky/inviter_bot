@@ -677,10 +677,12 @@ async function checkAccess() {
             showNotification('Access check completed successfully', 'success');
         } else {
             resultEl.className = 'alert alert-danger';
-            // Use textContent for error messages to prevent XSS
-            resultEl.innerHTML = '<i class="bi bi-x-circle"></i> ';
-            const errorText = document.createTextNode(data.message || 'Failed to check access');
-            resultEl.appendChild(errorText);
+            // Create safe error message with icon
+            const iconSpan = document.createElement('i');
+            iconSpan.className = 'bi bi-x-circle';
+            resultEl.innerHTML = '';
+            resultEl.appendChild(iconSpan);
+            resultEl.appendChild(document.createTextNode(' ' + (data.message || 'Failed to check access')));
             showNotification(data.message || 'Failed to check access', 'error');
         }
     } catch (error) {
