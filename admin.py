@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Union
 from dotenv import load_dotenv
 from database import Database
 from passlib.context import CryptContext
@@ -56,15 +56,15 @@ pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
 
 
-def normalize_channel_id(channel_id: str) -> str:
+def normalize_channel_id(channel_id: str) -> Union[int, str]:
     """
     Normalize channel ID to proper format.
     Telegram channel IDs can be provided in different formats:
-    - Numeric ID: -1001234567890 (negative integers)
-    - Username: @channelname or channelname (alphanumeric with underscores)
+    - Numeric ID: -1001234567890 (negative integers) - returns as int
+    - Username: @channelname or channelname (alphanumeric with underscores) - returns as str
     
-    This function normalizes numeric IDs to standard string format and
-    preserves usernames as-is.
+    This function normalizes numeric IDs to integer format (required by Pyrogram)
+    and preserves usernames as strings.
     Note: Both normalized and original IDs should be tried when making API calls.
     """
     # If it's empty, return as-is
@@ -76,15 +76,10 @@ def normalize_channel_id(channel_id: str) -> str:
     if channel_id.startswith('@') or not all(c.isdigit() or c == '-' for c in channel_id):
         return channel_id
     
-    # If it's a numeric ID (negative integer in string format)
-    if channel_id.startswith('-') and channel_id[1:].isdigit():
-        # Already in normalized format (e.g., "-1001234567890")
-        return channel_id
-    
-    # Try to convert to int and back to string to normalize positive integers
+    # If it's a numeric ID, convert to integer (required by Pyrogram's get_chat)
     try:
         channel_id_int = int(channel_id)
-        return str(channel_id_int)
+        return channel_id_int
     except ValueError:
         # Not a valid numeric ID, return as-is (likely a username)
         return channel_id
