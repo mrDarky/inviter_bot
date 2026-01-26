@@ -215,6 +215,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.url.path == '/admin/questions' %}active{% endif %}" href="/admin/questions">
+                            <i class="bi bi-question-circle"></i> User Questions
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.url.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">
                             <i class="bi bi-file-text"></i> Logs
                         </a>

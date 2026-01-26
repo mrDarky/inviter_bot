@@ -264,6 +264,45 @@ class Database:
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Migration warning for pyrogram_sessions table: {e}")
             
+            # Questions table for user onboarding questions
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_questions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    question_text TEXT NOT NULL,
+                    question_type TEXT NOT NULL,
+                    options TEXT,
+                    is_required INTEGER DEFAULT 1,
+                    order_number INTEGER NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # User answers table to store responses
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_answers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    question_id INTEGER NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id),
+                    FOREIGN KEY (question_id) REFERENCES user_questions(id)
+                )
+            """)
+            
+            # User onboarding state table to track progress
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_onboarding_state (
+                    user_id INTEGER PRIMARY KEY,
+                    current_question_id INTEGER,
+                    static_messages_completed INTEGER DEFAULT 0,
+                    onboarding_started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    onboarding_completed_at TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+            
             await db.commit()
     
     # User operations
@@ -785,6 +824,17 @@ class Database:
                 result = await cursor.fetchone()
                 return dict(result) if result else None
     
+    async def get_join_requests_by_user(self, user_id: int):
+        """Get all join requests for a specific user"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM join_requests WHERE user_id = ? ORDER BY request_date DESC",
+                (user_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
     # Pyrogram sessions methods
     async def add_pyrogram_session(self, session_name: str, phone_number: str, api_id: int, api_hash: str, user_info: str = None, session_type: str = 'user', bot_token: str = None):
         """Add a new Pyrogram session"""
@@ -1007,4 +1057,189 @@ class Database:
         """Delete a channel invite link"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM channel_invite_links WHERE id = ?", (link_id,))
+            await db.commit()
+    
+    # User questions methods
+    async def add_user_question(self, question_text: str, question_type: str, options: str = None, 
+                                is_required: int = 1, order_number: int = 0):
+        """Add a new user question"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO user_questions (question_text, question_type, options, is_required, order_number)
+                VALUES (?, ?, ?, ?, ?)
+            """, (question_text, question_type, options, is_required, order_number))
+            await db.commit()
+    
+    async def get_user_questions(self, active_only: bool = True):
+        """Get all user questions"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT * FROM user_questions"
+            if active_only:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY order_number ASC"
+            
+            async with db.execute(query) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_user_question(self, question_id: int):
+        """Get a specific user question"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM user_questions WHERE id = ?",
+                (question_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def update_user_question(self, question_id: int, question_text: str = None, 
+                                   question_type: str = None, options: str = None,
+                                   is_required: int = None, order_number: int = None):
+        """Update a user question"""
+        async with aiosqlite.connect(self.db_path) as db:
+            updates = []
+            params = []
+            
+            if question_text is not None:
+                updates.append("question_text = ?")
+                params.append(question_text)
+            if question_type is not None:
+                updates.append("question_type = ?")
+                params.append(question_type)
+            if options is not None:
+                updates.append("options = ?")
+                params.append(options)
+            if is_required is not None:
+                updates.append("is_required = ?")
+                params.append(is_required)
+            if order_number is not None:
+                updates.append("order_number = ?")
+                params.append(order_number)
+            
+            if updates:
+                params.append(question_id)
+                query = f"UPDATE user_questions SET {', '.join(updates)} WHERE id = ?"
+                await db.execute(query, params)
+                await db.commit()
+    
+    async def toggle_user_question(self, question_id: int):
+        """Toggle user question active status"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE user_questions 
+                SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+                WHERE id = ?
+            """, (question_id,))
+            await db.commit()
+    
+    async def delete_user_question(self, question_id: int):
+        """Delete a user question"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Delete associated answers first
+            await db.execute("DELETE FROM user_answers WHERE question_id = ?", (question_id,))
+            await db.execute("DELETE FROM user_questions WHERE id = ?", (question_id,))
+            await db.commit()
+    
+    # User answers methods
+    async def add_user_answer(self, user_id: int, question_id: int, answer_text: str):
+        """Add or update a user answer"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Check if answer already exists
+            async with db.execute("""
+                SELECT id FROM user_answers WHERE user_id = ? AND question_id = ?
+            """, (user_id, question_id)) as cursor:
+                existing = await cursor.fetchone()
+            
+            if existing:
+                # Update existing answer
+                await db.execute("""
+                    UPDATE user_answers SET answer_text = ?, answered_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ? AND question_id = ?
+                """, (answer_text, user_id, question_id))
+            else:
+                # Insert new answer
+                await db.execute("""
+                    INSERT INTO user_answers (user_id, question_id, answer_text)
+                    VALUES (?, ?, ?)
+                """, (user_id, question_id, answer_text))
+            await db.commit()
+    
+    async def get_user_answers(self, user_id: int):
+        """Get all answers for a specific user"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT ua.*, uq.question_text, uq.question_type
+                FROM user_answers ua
+                JOIN user_questions uq ON ua.question_id = uq.id
+                WHERE ua.user_id = ?
+                ORDER BY uq.order_number ASC
+            """, (user_id,)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def get_user_answer(self, user_id: int, question_id: int):
+        """Get a specific user answer"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM user_answers WHERE user_id = ? AND question_id = ?
+            """, (user_id, question_id)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    # User onboarding state methods
+    async def set_user_onboarding_state(self, user_id: int, current_question_id: int = None, 
+                                        static_messages_completed: int = None):
+        """Set or update user onboarding state"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Check if state exists
+            async with db.execute("""
+                SELECT user_id FROM user_onboarding_state WHERE user_id = ?
+            """, (user_id,)) as cursor:
+                existing = await cursor.fetchone()
+            
+            if existing:
+                # Update existing state
+                updates = []
+                params = []
+                if current_question_id is not None:
+                    updates.append("current_question_id = ?")
+                    params.append(current_question_id)
+                if static_messages_completed is not None:
+                    updates.append("static_messages_completed = ?")
+                    params.append(static_messages_completed)
+                
+                if updates:
+                    params.append(user_id)
+                    query = f"UPDATE user_onboarding_state SET {', '.join(updates)} WHERE user_id = ?"
+                    await db.execute(query, params)
+            else:
+                # Insert new state
+                await db.execute("""
+                    INSERT INTO user_onboarding_state (user_id, current_question_id, static_messages_completed)
+                    VALUES (?, ?, ?)
+                """, (user_id, current_question_id or 0, static_messages_completed or 0))
+            await db.commit()
+    
+    async def get_user_onboarding_state(self, user_id: int):
+        """Get user onboarding state"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT * FROM user_onboarding_state WHERE user_id = ?
+            """, (user_id,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def complete_user_onboarding(self, user_id: int):
+        """Mark user onboarding as completed"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                UPDATE user_onboarding_state 
+                SET onboarding_completed_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (user_id,))
             await db.commit()
