@@ -780,13 +780,13 @@ class Database:
             
             query += " ORDER BY request_date DESC"
             
-            # Apply older_than_count filter if specified
+            # Apply older_than_count filter if specified (skip the first N oldest results)
+            final_offset = offset
             if older_than_count:
-                query += f" LIMIT -1 OFFSET ?"
-                params.append(older_than_count)
+                final_offset += older_than_count
             
             query += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+            params.extend([limit, final_offset])
             
             async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()

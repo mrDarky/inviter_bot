@@ -2,7 +2,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Form, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -426,9 +426,15 @@ async def menu_constructor_page(request: Request):
 
 
 @app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
-async def invite_requests_page(request: Request, status: str = 'pending', page: int = 1,
-                                chat_id: int = None, date_from: str = None, date_to: str = None,
-                                older_than_count: int = None):
+async def invite_requests_page(
+    request: Request, 
+    status: str = 'pending', 
+    page: int = 1,
+    chat_id: Optional[int] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    older_than_count: Optional[int] = Query(None)
+):
     """Invite requests page"""
     limit = 20
     offset = (page - 1) * limit
@@ -438,15 +444,15 @@ async def invite_requests_page(request: Request, status: str = 'pending', page: 
         limit=limit, 
         offset=offset,
         chat_id=chat_id,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=date_from if date_from else None,
+        date_to=date_to if date_to else None,
         older_than_count=older_than_count
     )
     total = await db.get_join_request_count(
         status=status,
         chat_id=chat_id,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=date_from if date_from else None,
+        date_to=date_to if date_to else None,
         older_than_count=older_than_count
     )
     total_pages = (total + limit - 1) // limit
