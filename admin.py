@@ -56,6 +56,40 @@ pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
 
 
+def normalize_channel_id(channel_id: str) -> str:
+    """
+    Normalize channel ID to proper format.
+    Telegram channel IDs can be provided in different formats:
+    - Numeric ID: -1001234567890 (negative integers)
+    - Username: @channelname or channelname (alphanumeric with underscores)
+    
+    This function normalizes numeric IDs to standard string format and
+    preserves usernames as-is.
+    Note: Both normalized and original IDs should be tried when making API calls.
+    """
+    # If it's empty, return as-is
+    if not channel_id:
+        return channel_id
+    
+    # If it's a username (starts with @ or contains non-numeric/non-hyphen characters), return as-is
+    # Usernames can contain letters, digits, and underscores
+    if channel_id.startswith('@') or not all(c.isdigit() or c == '-' for c in channel_id):
+        return channel_id
+    
+    # If it's a numeric ID (negative integer in string format)
+    if channel_id.startswith('-') and channel_id[1:].isdigit():
+        # Already in normalized format (e.g., "-1001234567890")
+        return channel_id
+    
+    # Try to convert to int and back to string to normalize positive integers
+    try:
+        channel_id_int = int(channel_id)
+        return str(channel_id_int)
+    except ValueError:
+        # Not a valid numeric ID, return as-is (likely a username)
+        return channel_id
+
+
 class DatabaseLogHandler(logging.Handler):
     """Custom logging handler to save logs to database"""
     def emit(self, record):
@@ -1428,12 +1462,30 @@ async def pyrogram_load_requests(
         try:
             await client.start()
             
-            # Get chat
+            # Normalize channel ID
+            normalized_channel_id = normalize_channel_id(request.channel_id)
+            
+            # Get chat - try with normalized ID first, then original if it fails
+            chat = None
+            last_error = None
+            
+            # Try normalized ID
             try:
-                chat = await client.get_chat(request.channel_id)
-            except BadRequest:
+                chat = await client.get_chat(normalized_channel_id)
+            except (BadRequest, ChannelInvalid, PeerIdInvalid) as e:
+                last_error = e
+                # If normalized ID fails and it's different from original, try original
+                if normalized_channel_id != request.channel_id:
+                    try:
+                        chat = await client.get_chat(request.channel_id)
+                        last_error = None
+                    except (BadRequest, ChannelInvalid, PeerIdInvalid) as e2:
+                        last_error = e2
+            
+            if chat is None:
                 await client.stop()
-                return {"status": "error", "message": "Invalid channel ID or username"}
+                error_msg = "Invalid channel ID or username. Please verify that: 1) The channel ID is correct (format: -1001234567890 for numeric IDs or @username for usernames), 2) The channel exists, 3) You have access to this channel."
+                return {"status": "error", "message": error_msg}
             
             # Check if user has permission
             try:
@@ -1656,6 +1708,10 @@ async def get_user_channels(session_name: str = Form(...), _: None = Depends(req
         if not session_data['is_active']:
             return {"status": "error", "message": "Session is not active"}
         
+        # Check if it's a bot session
+        if session_data.get('session_type') == 'bot':
+            return {"status": "error", "message": "Bot sessions cannot list channels. This feature is only available for user sessions. Please use a user session or enter the channel ID manually."}
+        
         # Create Pyrogram client
         client = Client(
             name=os.path.join(SESSIONS_DIR, session_name),
@@ -1718,13 +1774,8 @@ async def create_channel_invite_link(
         if not session_data or not session_data['is_active']:
             return {"status": "error", "message": "Session not found or inactive"}
         
-        # Parse channel_id: could be numeric ID or username
-        # Try to convert to int, if it fails, treat as username
-        try:
-            channel_identifier = int(channel_id)
-        except ValueError:
-            # It's a username, keep it as string
-            channel_identifier = channel_id
+        # Normalize channel ID
+        normalized_channel_id = normalize_channel_id(channel_id)
         
         # Create Pyrogram client
         client = Client(
@@ -1737,31 +1788,54 @@ async def create_channel_invite_link(
             await client.start()
             
             # Get channel info - this will validate access
+            # Try normalized ID first, then original if different
+            chat = None
+            last_error = None
+            
             try:
-                chat = await client.get_chat(channel_identifier)
-            except (UsernameInvalid, UsernameNotOccupied):
-                await client.stop()
-                return {
-                    "status": "error", 
-                    "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
-                }
-            except (ChannelInvalid, PeerIdInvalid):
-                await client.stop()
-                return {
-                    "status": "error", 
-                    "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890)."
-                }
+                chat = await client.get_chat(normalized_channel_id)
+            except (UsernameInvalid, UsernameNotOccupied) as e:
+                last_error = e
+                if normalized_channel_id != channel_id:
+                    try:
+                        chat = await client.get_chat(channel_id)
+                        last_error = None
+                    except (UsernameInvalid, UsernameNotOccupied) as e2:
+                        last_error = e2
+                
+                if last_error:
+                    await client.stop()
+                    return {
+                        "status": "error", 
+                        "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
+                    }
+            except (ChannelInvalid, PeerIdInvalid, BadRequest) as e:
+                last_error = e
+                if normalized_channel_id != channel_id:
+                    try:
+                        chat = await client.get_chat(channel_id)
+                        last_error = None
+                    except (ChannelInvalid, PeerIdInvalid, BadRequest) as e2:
+                        last_error = e2
+                
+                if last_error:
+                    await client.stop()
+                    return {
+                        "status": "error", 
+                        "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username (e.g., @channelname)."
+                    }
             except ChannelPrivate:
                 await client.stop()
                 return {
                     "status": "error", 
                     "message": "Cannot access this channel. The channel is private or the session doesn't have access to it."
                 }
-            except BadRequest as e:
+            
+            if chat is None:
                 await client.stop()
                 return {
-                    "status": "error", 
-                    "message": f"Invalid channel ID or username: {str(e)}. Please use numeric ID (e.g., -1001234567890) or username (e.g., @channelname)."
+                    "status": "error",
+                    "message": "Unable to access channel. Please verify the channel ID and your access permissions."
                 }
             
             # Create invite link - use chat.id for consistency
