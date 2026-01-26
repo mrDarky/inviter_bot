@@ -55,9 +55,6 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
 
-# Telegram channel ID constants
-TELEGRAM_CHANNEL_ID_MIN_LENGTH = 13
-
 
 def normalize_channel_id(channel_id: str) -> str:
     """
@@ -1804,12 +1801,8 @@ async def create_channel_invite_link(
                         last_error = None
                     except (UsernameInvalid, UsernameNotOccupied) as e2:
                         last_error = e2
-                        await client.stop()
-                        return {
-                            "status": "error", 
-                            "message": "Invalid username. Please check the username format (e.g., @channelname) and ensure it exists."
-                        }
-                else:
+                
+                if last_error:
                     await client.stop()
                     return {
                         "status": "error", 
@@ -1823,12 +1816,8 @@ async def create_channel_invite_link(
                         last_error = None
                     except (ChannelInvalid, PeerIdInvalid, BadRequest) as e2:
                         last_error = e2
-                        await client.stop()
-                        return {
-                            "status": "error", 
-                            "message": "Invalid channel ID. Please use a valid numeric channel ID (e.g., -1001234567890) or username (e.g., @channelname)."
-                        }
-                else:
+                
+                if last_error:
                     await client.stop()
                     return {
                         "status": "error", 
