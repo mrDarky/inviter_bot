@@ -11,17 +11,48 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-3">
-            <div class="col-md-6">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
                 <select class="form-select" name="status">
                     <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
                     <option value="approved" {% if status == 'approved' %}selected{% endif %}>Approved</option>
                     <option value="denied" {% if status == 'denied' %}selected{% endif %}>Denied</option>
+                    <option value="" {% if status == '' or status is none %}selected{% endif %}>All</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <button type="submit" class="btn btn-primary w-100">
+            <div class="col-md-3">
+                <label class="form-label">Channel/Chat</label>
+                <select class="form-select" name="chat_id">
+                    <option value="">All Channels</option>
+                    {% for chat in chat_ids %}
+                    <option value="{{ chat.chat_id }}" {% if selected_chat_id == chat.chat_id %}selected{% endif %}>
+                        Chat ID: {{ chat.chat_id }} ({{ chat.request_count }} requests)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Date From</label>
+                <input type="date" class="form-control" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Date To</label>
+                <input type="date" class="form-control" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Skip Older N</label>
+                <input type="number" class="form-control" name="older_than_count" 
+                       value="{{ older_than_count or '' }}" 
+                       placeholder="0" min="0"
+                       title="Skip the first N oldest requests">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">
                     <i class="bi bi-search"></i> Filter
                 </button>
+                <a href="/admin/invite-requests" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Clear Filters
+                </a>
             </div>
         </form>
     </div>
@@ -126,9 +157,17 @@
         {% if total_pages > 1 %}
         <nav aria-label="Page navigation">
             <ul class="pagination justify-content-center">
+                {% set filter_params = [] %}
+                {% if status %}{% set _ = filter_params.append('status=' + status) %}{% endif %}
+                {% if selected_chat_id %}{% set _ = filter_params.append('chat_id=' + selected_chat_id|string) %}{% endif %}
+                {% if date_from %}{% set _ = filter_params.append('date_from=' + date_from) %}{% endif %}
+                {% if date_to %}{% set _ = filter_params.append('date_to=' + date_to) %}{% endif %}
+                {% if older_than_count %}{% set _ = filter_params.append('older_than_count=' + older_than_count|string) %}{% endif %}
+                {% set filter_query = ('&' + '&'.join(filter_params)) if filter_params else '' %}
+                
                 {% if page > 1 %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page - 1 }}{% if status %}&status={{ status }}{% endif %}">Previous</a>
+                    <a class="page-link" href="?page={{ page - 1 }}{{ filter_query }}">Previous</a>
                 </li>
                 {% endif %}
                 
@@ -137,7 +176,7 @@
                 <li class="page-item active"><span class="page-link">{{ p }}</span></li>
                 {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ p }}{% if status %}&status={{ status }}{% endif %}">{{ p }}</a>
+                    <a class="page-link" href="?page={{ p }}{{ filter_query }}">{{ p }}</a>
                 </li>
                 {% elif p == 4 or p == total_pages - 3 %}
                 <li class="page-item disabled"><span class="page-link">...</span></li>
@@ -146,7 +185,7 @@
                 
                 {% if page < total_pages %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page + 1 }}{% if status %}&status={{ status }}{% endif %}">Next</a>
+                    <a class="page-link" href="?page={{ page + 1 }}{{ filter_query }}">Next</a>
                 </li>
                 {% endif %}
             </ul>

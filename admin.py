@@ -2,7 +2,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Form, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -426,21 +426,55 @@ async def menu_constructor_page(request: Request):
 
 
 @app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
-async def invite_requests_page(request: Request, status: str = 'pending', page: int = 1):
+async def invite_requests_page(
+    request: Request, 
+    status: Optional[str] = Query('pending'), 
+    page: int = 1,
+    chat_id: Optional[int] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    older_than_count: Optional[int] = Query(None)
+):
     """Invite requests page"""
     limit = 20
     offset = (page - 1) * limit
     
-    requests = await db.get_join_requests(status=status, limit=limit, offset=offset)
-    total = await db.get_join_request_count(status=status)
+    # Handle empty string for status (treat as None for 'All')
+    if status == '':
+        status = None
+    
+    requests = await db.get_join_requests(
+        status=status, 
+        limit=limit, 
+        offset=offset,
+        chat_id=chat_id,
+        date_from=date_from,
+        date_to=date_to,
+        older_than_count=older_than_count
+    )
+    total = await db.get_join_request_count(
+        status=status,
+        chat_id=chat_id,
+        date_from=date_from,
+        date_to=date_to,
+        older_than_count=older_than_count
+    )
     total_pages = (total + limit - 1) // limit
+    
+    # Get distinct chat IDs for filter dropdown
+    chat_ids = await db.get_distinct_chat_ids()
     
     return templates.TemplateResponse("invite_requests.html", {
         "request": request,
         "requests": requests,
         "page": page,
         "total_pages": total_pages,
-        "status": status
+        "status": status,
+        "chat_ids": chat_ids,
+        "selected_chat_id": chat_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "older_than_count": older_than_count
     })
 
 
