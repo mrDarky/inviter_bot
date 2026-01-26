@@ -1499,12 +1499,16 @@ async def pyrogram_load_requests(
                 return {"status": "error", "message": f"Cannot check permissions: {str(e)}"}
             
             # Get join requests with batch processing
+            # Remove limit to load all join requests in batches
             count = 0
+            skipped = 0
+            total = 0
             batch_size = 100
             batch = []
             
-            async for req in client.get_chat_join_requests(chat.id, limit=1000):  # Limit to 1000 total
+            async for req in client.get_chat_join_requests(chat.id):
                 try:
+                    total += 1
                     batch.append({
                         'user_id': req.user.id,
                         'chat_id': chat.id,
@@ -1516,12 +1520,13 @@ async def pyrogram_load_requests(
                     # Process in batches
                     if len(batch) >= batch_size:
                         for item in batch:
-                            try:
+                            # Check if already exists to avoid duplicates
+                            exists = await db.join_request_exists(item['user_id'], item['chat_id'])
+                            if not exists:
                                 await db.add_join_request(**item)
                                 count += 1
-                            except Exception:
-                                # Skip if already exists
-                                pass
+                            else:
+                                skipped += 1
                         batch = []
                 except Exception as e:
                     logger.debug(f"Skipping request: {e}")
@@ -1529,19 +1534,26 @@ async def pyrogram_load_requests(
             
             # Process remaining items
             for item in batch:
-                try:
+                # Check if already exists to avoid duplicates
+                exists = await db.join_request_exists(item['user_id'], item['chat_id'])
+                if not exists:
                     await db.add_join_request(**item)
                     count += 1
-                except Exception:
-                    # Skip if already exists
-                    pass
+                else:
+                    skipped += 1
             
             await client.stop()
+            
+            message = f"Loaded {count} new join requests"
+            if skipped > 0:
+                message += f" ({skipped} already existed, {total} total found)"
             
             return {
                 "status": "success",
                 "count": count,
-                "message": f"Loaded {count} join requests"
+                "skipped": skipped,
+                "total": total,
+                "message": message
             }
         except FloodWait as e:
             await client.stop()
