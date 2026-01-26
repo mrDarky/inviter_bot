@@ -432,7 +432,8 @@ def parse_optional_int(value: Optional[str], allow_negative: bool = True) -> Opt
     
     Args:
         value: The string value to parse
-        allow_negative: Whether to allow negative integers (default: True)
+        allow_negative: Whether to allow negative integers (default: True).
+                       If False, negative values will return None.
     
     Returns:
         Parsed integer or None
