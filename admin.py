@@ -1475,7 +1475,8 @@ async def pyrogram_load_requests(
             except (BadRequest, ChannelInvalid, PeerIdInvalid) as e:
                 last_error = e
                 # If normalized ID fails and it's different from original, try original
-                if normalized_channel_id != request.channel_id:
+                # Compare string representations to handle int vs str comparison
+                if str(normalized_channel_id) != request.channel_id:
                     try:
                         chat = await client.get_chat(request.channel_id)
                         last_error = None
@@ -1597,7 +1598,8 @@ async def pyrogram_check_access(
             except (BadRequest, ChannelInvalid, ChannelPrivate, PeerIdInvalid) as e:
                 last_error = e
                 # If normalized ID fails and it's different from original, try original
-                if normalized_channel_id != request.channel_id:
+                # Compare string representations to handle int vs str comparison
+                if str(normalized_channel_id) != request.channel_id:
                     try:
                         chat = await client.get_chat(request.channel_id)
                         last_error = None
@@ -1915,7 +1917,8 @@ async def create_channel_invite_link(
                 chat = await client.get_chat(normalized_channel_id)
             except (UsernameInvalid, UsernameNotOccupied) as e:
                 last_error = e
-                if normalized_channel_id != channel_id:
+                # Compare string representations to handle int vs str comparison
+                if str(normalized_channel_id) != channel_id:
                     try:
                         chat = await client.get_chat(channel_id)
                         last_error = None
@@ -1930,7 +1933,8 @@ async def create_channel_invite_link(
                     }
             except (ChannelInvalid, PeerIdInvalid, BadRequest) as e:
                 last_error = e
-                if normalized_channel_id != channel_id:
+                # Compare string representations to handle int vs str comparison
+                if str(normalized_channel_id) != channel_id:
                     try:
                         chat = await client.get_chat(channel_id)
                         last_error = None
