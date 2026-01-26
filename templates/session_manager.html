@@ -645,9 +645,9 @@ async function checkAccess() {
                 if (data.chat_info.username) {
                     html += `<li><strong>Username:</strong> ${escapeHtml(data.chat_info.username)}</li>`;
                 }
-                html += `<li><strong>ID:</strong> ${escapeHtml(String(data.chat_info.id))}</li>`;
+                html += `<li><strong>ID:</strong> ${data.chat_info.id}</li>`;
                 if (data.chat_info.members_count) {
-                    html += `<li><strong>Members:</strong> ${escapeHtml(String(data.chat_info.members_count))}</li>`;
+                    html += `<li><strong>Members:</strong> ${data.chat_info.members_count}</li>`;
                 }
                 html += '</ul>';
             }

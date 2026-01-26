@@ -1649,10 +1649,10 @@ async def pyrogram_check_access(
                 
                 return {
                     "status": "success",
-                    "message": f"Access confirmed to {chat.title or chat.first_name or 'channel'}",
+                    "message": f"Access confirmed to {chat.title or 'Unknown Channel'}",
                     "chat_info": {
                         "id": chat.id,
-                        "title": chat.title or chat.first_name or "Unknown",
+                        "title": chat.title or "Unknown Channel",
                         "type": chat.type.name if chat.type else "UNKNOWN",
                         "username": f"@{chat.username}" if chat.username else None,
                         "members_count": chat.members_count if hasattr(chat, 'members_count') else None,
