@@ -11,63 +11,48 @@
     <div class="card-body">
         <ul class="nav nav-tabs" id="logsTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="bot-all-tab" data-bs-toggle="tab" data-bs-target="#bot-all" type="button" role="tab">
-                    <i class="bi bi-robot"></i> Bot - All Logs
+                <button class="nav-link active" id="all-logs-tab" data-bs-toggle="tab" data-bs-target="#all-logs" type="button" role="tab">
+                    <i class="bi bi-list-ul"></i> All Logs
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="bot-error-tab" data-bs-toggle="tab" data-bs-target="#bot-error" type="button" role="tab">
-                    <i class="bi bi-exclamation-triangle"></i> Bot - Errors
+                <button class="nav-link" id="bot-logs-tab" data-bs-toggle="tab" data-bs-target="#bot-logs" type="button" role="tab">
+                    <i class="bi bi-robot"></i> Bot Logs
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="admin-all-tab" data-bs-toggle="tab" data-bs-target="#admin-all" type="button" role="tab">
-                    <i class="bi bi-shield"></i> Admin - All Logs
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="admin-error-tab" data-bs-toggle="tab" data-bs-target="#admin-error" type="button" role="tab">
-                    <i class="bi bi-exclamation-circle"></i> Admin - Errors
+                <button class="nav-link" id="admin-logs-tab" data-bs-toggle="tab" data-bs-target="#admin-logs" type="button" role="tab">
+                    <i class="bi bi-shield"></i> Admin Panel Logs
                 </button>
             </li>
         </ul>
 
         <div class="tab-content mt-3" id="logsTabContent">
-            <!-- Bot - All Logs -->
-            <div class="tab-pane fade show active" id="bot-all" role="tabpanel">
-                <div id="bot-all-logs" class="logs-container"></div>
+            <!-- All Logs -->
+            <div class="tab-pane fade show active" id="all-logs" role="tabpanel">
+                <div id="all-logs-logs" class="logs-container"></div>
                 <div class="text-center mt-3">
-                    <button id="bot-all-load-more" class="btn btn-outline-primary" style="display: none;">
+                    <button id="all-logs-load-more" class="btn btn-outline-primary" style="display: none;">
                         Load More
                     </button>
                 </div>
             </div>
 
-            <!-- Bot - Error Logs -->
-            <div class="tab-pane fade" id="bot-error" role="tabpanel">
-                <div id="bot-error-logs" class="logs-container"></div>
+            <!-- Bot Logs -->
+            <div class="tab-pane fade" id="bot-logs" role="tabpanel">
+                <div id="bot-logs-logs" class="logs-container"></div>
                 <div class="text-center mt-3">
-                    <button id="bot-error-load-more" class="btn btn-outline-primary" style="display: none;">
+                    <button id="bot-logs-load-more" class="btn btn-outline-primary" style="display: none;">
                         Load More
                     </button>
                 </div>
             </div>
 
-            <!-- Admin - All Logs -->
-            <div class="tab-pane fade" id="admin-all" role="tabpanel">
-                <div id="admin-all-logs" class="logs-container"></div>
+            <!-- Admin Panel Logs -->
+            <div class="tab-pane fade" id="admin-logs" role="tabpanel">
+                <div id="admin-logs-logs" class="logs-container"></div>
                 <div class="text-center mt-3">
-                    <button id="admin-all-load-more" class="btn btn-outline-primary" style="display: none;">
-                        Load More
-                    </button>
-                </div>
-            </div>
-
-            <!-- Admin - Error Logs -->
-            <div class="tab-pane fade" id="admin-error" role="tabpanel">
-                <div id="admin-error-logs" class="logs-container"></div>
-                <div class="text-center mt-3">
-                    <button id="admin-error-load-more" class="btn btn-outline-primary" style="display: none;">
+                    <button id="admin-logs-load-more" class="btn btn-outline-primary" style="display: none;">
                         Load More
                     </button>
                 </div>
@@ -165,10 +150,9 @@
 <script>
 // Log data state
 const logState = {
-    'bot-all': { offset: 0, hasMore: true, source: 'bot', level: null },
-    'bot-error': { offset: 0, hasMore: true, source: 'bot', level: 'ERROR' },
-    'admin-all': { offset: 0, hasMore: true, source: 'admin_panel', level: null },
-    'admin-error': { offset: 0, hasMore: true, source: 'admin_panel', level: 'ERROR' }
+    'all-logs': { offset: 0, hasMore: true, source: null, level: null },
+    'bot-logs': { offset: 0, hasMore: true, source: 'bot', level: null },
+    'admin-logs': { offset: 0, hasMore: true, source: 'admin_panel', level: null }
 };
 
 // Format log entry as HTML
@@ -258,12 +242,11 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
 });
 
 // Load more buttons
-document.getElementById('bot-all-load-more').addEventListener('click', () => loadLogs('bot-all', true));
-document.getElementById('bot-error-load-more').addEventListener('click', () => loadLogs('bot-error', true));
-document.getElementById('admin-all-load-more').addEventListener('click', () => loadLogs('admin-all', true));
-document.getElementById('admin-error-load-more').addEventListener('click', () => loadLogs('admin-error', true));
+document.getElementById('all-logs-load-more').addEventListener('click', () => loadLogs('all-logs', true));
+document.getElementById('bot-logs-load-more').addEventListener('click', () => loadLogs('bot-logs', true));
+document.getElementById('admin-logs-load-more').addEventListener('click', () => loadLogs('admin-logs', true));
 
 // Load initial tab on page load
-loadLogs('bot-all');
+loadLogs('all-logs');
 </script>
 {% endblock %}
