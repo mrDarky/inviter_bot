@@ -98,6 +98,9 @@
                     <button class="btn btn-sm btn-info" onclick="checkSession('{{ session.session_name }}')">
                         <i class="bi bi-check-circle"></i> Check Status
                     </button>
+                    <button class="btn btn-sm btn-success" onclick="openCheckAccessModal('{{ session.session_name }}')">
+                        <i class="bi bi-shield-check"></i> Check Access
+                    </button>
                     <button class="btn btn-sm btn-primary" onclick="openLoadRequestsModal('{{ session.session_name }}')">
                         <i class="bi bi-download"></i> Load Requests
                     </button>
@@ -336,6 +339,39 @@
     </div>
 </div>
 
+<!-- Check Access Modal -->
+<div class="modal fade" id="checkAccessModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-shield-check"></i> Check Channel Access</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="checkAccessSessionName">
+                <div class="mb-3">
+                    <label class="form-label">Channel ID or Username</label>
+                    <input type="text" class="form-control" id="checkAccessChannelId" placeholder="@channelname or -1001234567890">
+                    <small class="text-muted">Enter channel username (with @) or channel ID</small>
+                </div>
+                <div id="checkAccessProgress" style="display: none;">
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                    </div>
+                    <p class="text-center">Checking access...</p>
+                </div>
+                <div id="checkAccessResult" class="alert" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="checkAccessBtn" onclick="checkAccess()">
+                    <i class="bi bi-shield-check"></i> Check Access
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 let currentStep = 1;
 let phoneCodeHash = '';
@@ -550,6 +586,110 @@ function openLoadRequestsModal(sessionName) {
     document.getElementById('loadProgress').style.display = 'none';
     document.getElementById('loadResult').style.display = 'none';
     new bootstrap.Modal(document.getElementById('loadRequestsModal')).show();
+}
+
+function openCheckAccessModal(sessionName) {
+    document.getElementById('checkAccessSessionName').value = sessionName;
+    document.getElementById('checkAccessChannelId').value = '';
+    document.getElementById('checkAccessProgress').style.display = 'none';
+    document.getElementById('checkAccessResult').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('checkAccessModal')).show();
+}
+
+async function checkAccess() {
+    const sessionName = document.getElementById('checkAccessSessionName').value;
+    const channelId = document.getElementById('checkAccessChannelId').value;
+    
+    if (!channelId) {
+        showNotification('Please enter a channel ID or username', 'error');
+        return;
+    }
+    
+    document.getElementById('checkAccessBtn').disabled = true;
+    document.getElementById('checkAccessProgress').style.display = 'block';
+    document.getElementById('checkAccessResult').style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/pyrogram/check-access', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({session_name: sessionName, channel_id: channelId})
+        });
+        
+        const data = await response.json();
+        
+        document.getElementById('checkAccessProgress').style.display = 'none';
+        document.getElementById('checkAccessBtn').disabled = false;
+        
+        const resultEl = document.getElementById('checkAccessResult');
+        resultEl.style.display = 'block';
+        
+        if (data.status === 'success') {
+            resultEl.className = 'alert alert-success';
+            
+            // Helper function to escape HTML
+            const escapeHtml = (text) => {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            };
+            
+            let html = `<i class="bi bi-check-circle"></i> <strong>${escapeHtml(data.message)}</strong><br><br>`;
+            
+            // Add chat info
+            if (data.chat_info) {
+                html += '<strong>Channel Information:</strong><br>';
+                html += `<ul class="mb-2">`;
+                html += `<li><strong>Title:</strong> ${escapeHtml(data.chat_info.title)}</li>`;
+                html += `<li><strong>Type:</strong> ${escapeHtml(data.chat_info.type)}</li>`;
+                if (data.chat_info.username) {
+                    html += `<li><strong>Username:</strong> ${escapeHtml(data.chat_info.username)}</li>`;
+                }
+                html += `<li><strong>ID:</strong> ${data.chat_info.id}</li>`;
+                if (data.chat_info.members_count) {
+                    html += `<li><strong>Members:</strong> ${data.chat_info.members_count}</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            // Add permissions
+            if (data.permissions) {
+                html += '<strong>Your Permissions:</strong><br>';
+                html += `<ul class="mb-0">`;
+                html += `<li><strong>Status:</strong> ${escapeHtml(data.permissions.status)}</li>`;
+                
+                if (data.permissions.can_invite_users !== undefined) {
+                    html += `<li><strong>Can Invite Users:</strong> ${data.permissions.can_invite_users ? '✓ Yes' : '✗ No'}</li>`;
+                }
+                if (data.permissions.can_manage_chat !== undefined) {
+                    html += `<li><strong>Can Manage Chat:</strong> ${data.permissions.can_manage_chat ? '✓ Yes' : '✗ No'}</li>`;
+                }
+                if (data.permissions.can_delete_messages !== undefined) {
+                    html += `<li><strong>Can Delete Messages:</strong> ${data.permissions.can_delete_messages ? '✓ Yes' : '✗ No'}</li>`;
+                }
+                if (data.permissions.can_post_messages !== undefined) {
+                    html += `<li><strong>Can Post Messages:</strong> ${data.permissions.can_post_messages ? '✓ Yes' : '✗ No'}</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            resultEl.innerHTML = html;
+            showNotification('Access check completed successfully', 'success');
+        } else {
+            resultEl.className = 'alert alert-danger';
+            // Create safe error message with icon
+            const iconSpan = document.createElement('i');
+            iconSpan.className = 'bi bi-x-circle';
+            resultEl.innerHTML = '';
+            resultEl.appendChild(iconSpan);
+            resultEl.appendChild(document.createTextNode(' ' + (data.message || 'Failed to check access')));
+            showNotification(data.message || 'Failed to check access', 'error');
+        }
+    } catch (error) {
+        document.getElementById('checkAccessProgress').style.display = 'none';
+        document.getElementById('checkAccessBtn').disabled = false;
+        showNotification('Error: ' + error.message, 'error');
+    }
 }
 
 async function loadRequests() {

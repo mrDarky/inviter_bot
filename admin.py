@@ -189,6 +189,11 @@ class PyrogramBotSessionRequest(BaseModel):
     bot_token: str
 
 
+class PyrogramCheckAccessRequest(BaseModel):
+    session_name: str
+    channel_id: str
+
+
 class ScheduleMessageRequest(BaseModel):
     text: str
     html_text: Optional[str] = None
@@ -1550,6 +1555,125 @@ async def pyrogram_load_requests(
             raise e
     except Exception as e:
         logger.error(f"Error loading requests: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/pyrogram/check-access")
+async def pyrogram_check_access(
+    request: PyrogramCheckAccessRequest,
+    _: None = Depends(require_auth)
+):
+    """Check if session has access to a channel"""
+    try:
+        session_data = await db.get_pyrogram_session(request.session_name)
+        if not session_data:
+            return {"status": "error", "message": "Session not found"}
+        
+        session_path = os.path.join(SESSIONS_DIR, request.session_name)
+        
+        # Create client - handle both user and bot sessions
+        if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash'],
+                bot_token=session_data['bot_token']
+            )
+        else:
+            client = Client(
+                name=session_path,
+                api_id=session_data['api_id'],
+                api_hash=session_data['api_hash']
+            )
+        
+        try:
+            await client.start()
+            
+            # Normalize channel ID
+            normalized_channel_id = normalize_channel_id(request.channel_id)
+            
+            # Get chat - try with normalized ID first, then original if it fails
+            chat = None
+            last_error = None
+            
+            # Try normalized ID
+            try:
+                chat = await client.get_chat(normalized_channel_id)
+            except (BadRequest, ChannelInvalid, ChannelPrivate, PeerIdInvalid) as e:
+                last_error = e
+                # If normalized ID fails and it's different from original, try original
+                if normalized_channel_id != request.channel_id:
+                    try:
+                        chat = await client.get_chat(request.channel_id)
+                        last_error = None
+                    except (BadRequest, ChannelInvalid, ChannelPrivate, PeerIdInvalid) as e2:
+                        last_error = e2
+            
+            if chat is None:
+                await client.stop()
+                # Provide more specific error message based on the exception type
+                if last_error and isinstance(last_error, ChannelPrivate):
+                    error_msg = "Access denied: This is a private channel and you don't have permission to access it."
+                elif last_error and isinstance(last_error, (ChannelInvalid, PeerIdInvalid)):
+                    error_msg = "Invalid channel: The channel ID or username is incorrect or the channel doesn't exist."
+                else:
+                    error_msg = "Unable to access channel: Please verify the channel ID/username and ensure you have access to it."
+                return {"status": "error", "message": error_msg}
+            
+            # Check if user/bot has access and get permissions
+            try:
+                member = await client.get_chat_member(chat.id, "me")
+                
+                # Build permissions info
+                permissions_info = {
+                    "status": member.status.name if member.status else "UNKNOWN",
+                    "can_be_edited": member.can_be_edited if hasattr(member, 'can_be_edited') else False,
+                }
+                
+                # Add privileges if available (for admin/owner)
+                if member.privileges:
+                    permissions_info.update({
+                        "can_manage_chat": member.privileges.can_manage_chat,
+                        "can_delete_messages": member.privileges.can_delete_messages,
+                        "can_manage_video_chats": member.privileges.can_manage_video_chats,
+                        "can_restrict_members": member.privileges.can_restrict_members,
+                        "can_promote_members": member.privileges.can_promote_members,
+                        "can_change_info": member.privileges.can_change_info,
+                        "can_invite_users": member.privileges.can_invite_users,
+                        "can_post_messages": member.privileges.can_post_messages,
+                        "can_edit_messages": member.privileges.can_edit_messages,
+                        "can_pin_messages": member.privileges.can_pin_messages,
+                    })
+                
+                await client.stop()
+                
+                return {
+                    "status": "success",
+                    "message": f"Access confirmed to {chat.title or 'Unknown Channel'}",
+                    "chat_info": {
+                        "id": chat.id,
+                        "title": chat.title or "Unknown Channel",
+                        "type": chat.type.name if chat.type else "UNKNOWN",
+                        "username": f"@{chat.username}" if chat.username else None,
+                        "members_count": chat.members_count if hasattr(chat, 'members_count') else None,
+                    },
+                    "permissions": permissions_info
+                }
+            except Exception as e:
+                await client.stop()
+                return {
+                    "status": "error", 
+                    "message": f"You have access to the channel but cannot check permissions: {str(e)}"
+                }
+            
+        except FloodWait as e:
+            await client.stop()
+            return {"status": "error", "message": f"Flood wait: please wait {e.value} seconds"}
+        except Exception as e:
+            await client.stop()
+            raise e
+    except Exception as e:
+        logger.error(f"Error checking access: {e}")
         return {"status": "error", "message": str(e)}
 
 
