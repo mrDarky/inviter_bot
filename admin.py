@@ -1520,10 +1520,8 @@ async def pyrogram_load_requests(
                     # Process in batches
                     if len(batch) >= batch_size:
                         for item in batch:
-                            # Check if already exists to avoid duplicates
-                            exists = await db.join_request_exists(item['user_id'], item['chat_id'])
-                            if not exists:
-                                await db.add_join_request(**item)
+                            is_new = await db.add_join_request(**item)
+                            if is_new:
                                 count += 1
                             else:
                                 skipped += 1
@@ -1534,10 +1532,8 @@ async def pyrogram_load_requests(
             
             # Process remaining items
             for item in batch:
-                # Check if already exists to avoid duplicates
-                exists = await db.join_request_exists(item['user_id'], item['chat_id'])
-                if not exists:
-                    await db.add_join_request(**item)
+                is_new = await db.add_join_request(**item)
+                if is_new:
                     count += 1
                 else:
                     skipped += 1

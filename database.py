@@ -729,8 +729,15 @@ class Database:
     
     # Join requests operations
     async def add_join_request(self, user_id: int, chat_id: int, username: str = None, first_name: str = None, last_name: str = None):
-        """Add or update join request"""
+        """Add or update join request. Returns True if new record was inserted, False if updated."""
         async with aiosqlite.connect(self.db_path) as db:
+            # First check if exists to determine if it's new or update
+            async with db.execute(
+                "SELECT id FROM join_requests WHERE user_id = ? AND chat_id = ?",
+                (user_id, chat_id)
+            ) as cursor:
+                exists = await cursor.fetchone() is not None
+            
             await db.execute("""
                 INSERT INTO join_requests (user_id, chat_id, username, first_name, last_name, status)
                 VALUES (?, ?, ?, ?, ?, 'pending')
@@ -743,6 +750,7 @@ class Database:
                     processed_date = NULL
             """, (user_id, chat_id, username, first_name, last_name))
             await db.commit()
+            return not exists  # Return True if it was a new insert
     
     async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0):
         """Get join requests with optional status filter"""
