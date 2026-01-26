@@ -843,16 +843,6 @@ class Database:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
     
-    async def join_request_exists(self, user_id: int, chat_id: int):
-        """Check if a join request already exists for the given user and chat"""
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
-                "SELECT 1 FROM join_requests WHERE user_id = ? AND chat_id = ?",
-                (user_id, chat_id)
-            ) as cursor:
-                result = await cursor.fetchone()
-                return result is not None
-    
     # Pyrogram sessions methods
     async def add_pyrogram_session(self, session_name: str, phone_number: str, api_id: int, api_hash: str, user_info: str = None, session_type: str = 'user', bot_token: str = None):
         """Add a new Pyrogram session"""
