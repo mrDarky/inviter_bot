@@ -425,15 +425,40 @@ async def menu_constructor_page(request: Request):
     })
 
 
+def parse_optional_int(value: Optional[str], allow_negative: bool = True) -> Optional[int]:
+    """
+    Parse an optional integer from a string query parameter.
+    Returns None if value is None, empty, whitespace, or invalid.
+    
+    Args:
+        value: The string value to parse
+        allow_negative: Whether to allow negative integers (default: True).
+                       If False, negative values will return None.
+    
+    Returns:
+        Parsed integer or None
+    """
+    if not value or not value.strip():
+        return None
+    
+    try:
+        parsed = int(value)
+        if not allow_negative and parsed < 0:
+            return None
+        return parsed
+    except ValueError:
+        return None
+
+
 @app.get("/admin/invite-requests", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
 async def invite_requests_page(
     request: Request, 
     status: Optional[str] = Query('pending'), 
     page: int = 1,
-    chat_id: Optional[int] = Query(None),
+    chat_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    older_than_count: Optional[int] = Query(None)
+    older_than_count: Optional[str] = Query(None)
 ):
     """Invite requests page"""
     limit = 20
@@ -443,21 +468,25 @@ async def invite_requests_page(
     if status == '':
         status = None
     
+    # Convert empty strings to None and parse integer values
+    chat_id_int = parse_optional_int(chat_id, allow_negative=True)
+    older_than_count_int = parse_optional_int(older_than_count, allow_negative=False)
+    
     requests = await db.get_join_requests(
         status=status, 
         limit=limit, 
         offset=offset,
-        chat_id=chat_id,
+        chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count
+        older_than_count=older_than_count_int
     )
     total = await db.get_join_request_count(
         status=status,
-        chat_id=chat_id,
+        chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count
+        older_than_count=older_than_count_int
     )
     total_pages = (total + limit - 1) // limit
     
@@ -471,10 +500,10 @@ async def invite_requests_page(
         "total_pages": total_pages,
         "status": status,
         "chat_ids": chat_ids,
-        "selected_chat_id": chat_id,
+        "selected_chat_id": chat_id_int,
         "date_from": date_from,
         "date_to": date_to,
-        "older_than_count": older_than_count
+        "older_than_count": older_than_count_int
     })
 
 
