@@ -430,10 +430,10 @@ async def invite_requests_page(
     request: Request, 
     status: Optional[str] = Query('pending'), 
     page: int = 1,
-    chat_id: Optional[int] = Query(None),
+    chat_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    older_than_count: Optional[int] = Query(None)
+    older_than_count: Optional[str] = Query(None)
 ):
     """Invite requests page"""
     limit = 20
@@ -443,21 +443,36 @@ async def invite_requests_page(
     if status == '':
         status = None
     
+    # Convert empty strings to None and parse integer values
+    chat_id_int = None
+    if chat_id and chat_id.strip():
+        try:
+            chat_id_int = int(chat_id)
+        except ValueError:
+            pass  # Invalid value, treat as None
+    
+    older_than_count_int = None
+    if older_than_count and older_than_count.strip():
+        try:
+            older_than_count_int = int(older_than_count)
+        except ValueError:
+            pass  # Invalid value, treat as None
+    
     requests = await db.get_join_requests(
         status=status, 
         limit=limit, 
         offset=offset,
-        chat_id=chat_id,
+        chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count
+        older_than_count=older_than_count_int
     )
     total = await db.get_join_request_count(
         status=status,
-        chat_id=chat_id,
+        chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count
+        older_than_count=older_than_count_int
     )
     total_pages = (total + limit - 1) // limit
     
@@ -471,10 +486,10 @@ async def invite_requests_page(
         "total_pages": total_pages,
         "status": status,
         "chat_ids": chat_ids,
-        "selected_chat_id": chat_id,
+        "selected_chat_id": chat_id_int,
         "date_from": date_from,
         "date_to": date_to,
-        "older_than_count": older_than_count
+        "older_than_count": older_than_count_int
     })
 
 
