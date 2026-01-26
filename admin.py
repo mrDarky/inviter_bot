@@ -60,32 +60,33 @@ def normalize_channel_id(channel_id: str) -> str:
     """
     Normalize channel ID to proper format.
     Telegram channel IDs can be provided in different formats:
-    - Full format: -1001234567890 (13+ digits with -100 prefix)
-    - Short format: -100929488 (less than 13 digits)
-    - Username: @channelname or channelname
+    - Numeric ID: -1001234567890 (negative integers)
+    - Username: @channelname or channelname (alphanumeric with underscores)
     
-    This function normalizes the format for consistency.
+    This function normalizes numeric IDs to standard string format and
+    preserves usernames as-is.
     Note: Both normalized and original IDs should be tried when making API calls.
     """
     # If it's empty, return as-is
     if not channel_id:
         return channel_id
     
-    # If it's a username (starts with @ or contains non-digit/non-hyphen characters), return as-is
+    # If it's a username (starts with @ or contains non-numeric/non-hyphen characters), return as-is
+    # Usernames can contain letters, digits, and underscores
     if channel_id.startswith('@') or not all(c.isdigit() or c == '-' for c in channel_id):
         return channel_id
     
-    # If it's a numeric ID (starts with - and rest are digits)
+    # If it's a numeric ID (negative integer in string format)
     if channel_id.startswith('-') and channel_id[1:].isdigit():
-        # Already normalized
+        # Already in normalized format (e.g., "-1001234567890")
         return channel_id
     
-    # Try to convert to int to normalize
+    # Try to convert to int and back to string to normalize positive integers
     try:
         channel_id_int = int(channel_id)
         return str(channel_id_int)
     except ValueError:
-        # Not a valid numeric ID, return as-is
+        # Not a valid numeric ID, return as-is (likely a username)
         return channel_id
 
 
