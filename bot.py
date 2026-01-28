@@ -690,7 +690,7 @@ async def send_next_question(user_id: int, current_question_id: int):
                 
                 for req in pending_requests:
                     try:
-                        await bot.approve_chat_join_request(int(req['chat_id']), user_id)
+                        await bot.approve_chat_join_request(int(req['chat_id']), int(user_id))
                         await db.approve_join_request(req['id'])
                         await db.log_action(user_id, "auto_approved", f"After onboarding completion")
                     except Exception as e:
