@@ -987,18 +987,34 @@ async def approve_join_requests(request_ids: List[int], _: None = Depends(requir
                     fail_count += 1
                     continue
                 
+                chat_id = int(join_request['chat_id'])
+                user_id = int(join_request['user_id'])
+                
+                # Try to get chat info for logging
+                chat_title = None
+                try:
+                    chat = await bot_instance.get_chat(chat_id)
+                    chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                except Exception as chat_error:
+                    logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
+                    chat_title = f"Chat {chat_id}"
+                
+                # Log the approval attempt with channel info
+                logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                
                 # Approve the join request
                 await bot_instance.approve_chat_join_request(
-                    chat_id=int(join_request['chat_id']),
-                    user_id=int(join_request['user_id'])
+                    chat_id=chat_id,
+                    user_id=user_id
                 )
                 
                 # Update database
                 await db.approve_join_request(request_id)
-                await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
+                await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
                 success_count += 1
+                logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
             except Exception as e:
-                logger.error(f"Error approving join request {request_id}: {e}")
+                logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
                 fail_count += 1
         
         await bot_instance.session.close()
@@ -1043,18 +1059,34 @@ async def deny_join_requests(request_ids: List[int], _: None = Depends(require_a
                     fail_count += 1
                     continue
                 
+                chat_id = int(join_request['chat_id'])
+                user_id = int(join_request['user_id'])
+                
+                # Try to get chat info for logging
+                chat_title = None
+                try:
+                    chat = await bot_instance.get_chat(chat_id)
+                    chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                except Exception as chat_error:
+                    logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
+                    chat_title = f"Chat {chat_id}"
+                
+                # Log the deny attempt with channel info
+                logger.info(f"Denying join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                
                 # Deny the join request
                 await bot_instance.decline_chat_join_request(
-                    chat_id=int(join_request['chat_id']),
-                    user_id=int(join_request['user_id'])
+                    chat_id=chat_id,
+                    user_id=user_id
                 )
                 
                 # Update database
                 await db.deny_join_request(request_id)
-                await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
+                await db.log_action(user_id, "join_request_denied", f"Chat ID: {chat_id}, Channel: {chat_title}")
                 success_count += 1
+                logger.info(f"Successfully denied join request {request_id} for user {user_id} in channel: {chat_title}")
             except Exception as e:
-                logger.error(f"Error denying join request {request_id}: {e}")
+                logger.error(f"Error denying join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
                 fail_count += 1
         
         await bot_instance.session.close()
@@ -1101,18 +1133,34 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
             
             for join_request in pending_requests:
                 try:
+                    chat_id = int(join_request['chat_id'])
+                    user_id = int(join_request['user_id'])
+                    
+                    # Try to get chat info for logging
+                    chat_title = None
+                    try:
+                        chat = await bot_instance.get_chat(chat_id)
+                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                    except Exception as chat_error:
+                        logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
+                        chat_title = f"Chat {chat_id}"
+                    
+                    # Log the approval attempt with channel info
+                    logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                    
                     # Approve the join request
                     await bot_instance.approve_chat_join_request(
-                        chat_id=int(join_request['chat_id']),
-                        user_id=int(join_request['user_id'])
+                        chat_id=chat_id,
+                        user_id=user_id
                     )
                     
                     # Update database
                     await db.approve_join_request(join_request['id'])
-                    await db.log_action(join_request['user_id'], "join_request_approved", f"Chat ID: {join_request['chat_id']}")
+                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
                     success_count += 1
+                    logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
                 except Exception as e:
-                    logger.error(f"Error approving join request {join_request['id']}: {e}")
+                    logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
                     fail_count += 1
             
             # Move to next batch
@@ -1162,18 +1210,34 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
             
             for join_request in pending_requests:
                 try:
+                    chat_id = int(join_request['chat_id'])
+                    user_id = int(join_request['user_id'])
+                    
+                    # Try to get chat info for logging
+                    chat_title = None
+                    try:
+                        chat = await bot_instance.get_chat(chat_id)
+                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                    except Exception as chat_error:
+                        logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
+                        chat_title = f"Chat {chat_id}"
+                    
+                    # Log the deny attempt with channel info
+                    logger.info(f"Auto-denying join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                    
                     # Deny the join request
                     await bot_instance.decline_chat_join_request(
-                        chat_id=int(join_request['chat_id']),
-                        user_id=int(join_request['user_id'])
+                        chat_id=chat_id,
+                        user_id=user_id
                     )
                     
                     # Update database
                     await db.deny_join_request(join_request['id'])
-                    await db.log_action(join_request['user_id'], "join_request_denied", f"Chat ID: {join_request['chat_id']}")
+                    await db.log_action(user_id, "join_request_denied", f"Chat ID: {chat_id}, Channel: {chat_title}")
                     success_count += 1
+                    logger.info(f"Successfully auto-denied join request {join_request['id']} for user {user_id} in channel: {chat_title}")
                 except Exception as e:
-                    logger.error(f"Error denying join request {join_request['id']}: {e}")
+                    logger.error(f"Error denying join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
                     fail_count += 1
             
             # Move to next batch
