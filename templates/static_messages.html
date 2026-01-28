@@ -99,6 +99,9 @@
                             <button class="btn btn-sm btn-info" onclick="toggleMessage({{ msg.id }})">
                                 <i class="bi bi-toggle-on"></i>
                             </button>
+                            <button class="btn btn-sm btn-success" onclick="showSendTestModal({{ msg.id }})">
+                                <i class="bi bi-send"></i>
+                            </button>
                             <button class="btn btn-sm btn-danger" onclick="deleteMessage({{ msg.id }})">
                                 <i class="bi bi-trash"></i>
                             </button>
@@ -296,6 +299,32 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="updateMessage()">
                     <i class="bi bi-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Send Test Modal -->
+<div class="modal fade" id="sendTestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Send Test Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="testMessageId">
+                <div class="mb-3">
+                    <label class="form-label">User ID or Username</label>
+                    <input type="text" class="form-control" id="testTarget" placeholder="12345678 or @username or username">
+                    <small class="text-muted">Enter a numeric Telegram user ID or username (with or without @)</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="sendTestMessage()">
+                    <i class="bi bi-send"></i> Send Test
                 </button>
             </div>
         </div>
@@ -548,6 +577,44 @@ async function deleteMessage(id) {
         const data = await response.json();
         showNotification(data.message, 'success');
         setTimeout(() => location.reload(), 1000);
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+function showSendTestModal(messageId) {
+    document.getElementById('testMessageId').value = messageId;
+    document.getElementById('testTarget').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('sendTestModal'));
+    modal.show();
+}
+
+async function sendTestMessage() {
+    const messageId = document.getElementById('testMessageId').value;
+    const target = document.getElementById('testTarget').value.trim();
+    
+    if (!target) {
+        showNotification('Please enter a user ID or username', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/static-messages/${messageId}/send-test`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ target: target })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showNotification(data.message, 'success');
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('sendTestModal'));
+            modal.hide();
+        } else {
+            showNotification(data.detail || 'Failed to send test message', 'error');
+        }
     } catch (error) {
         showNotification('Error: ' + error, 'error');
     }
