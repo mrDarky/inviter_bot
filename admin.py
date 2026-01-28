@@ -989,7 +989,7 @@ async def approve_join_requests(request_ids: List[int], _: None = Depends(requir
                 
                 # Approve the join request
                 await bot_instance.approve_chat_join_request(
-                    chat_id=join_request['chat_id'],
+                    chat_id=int(join_request['chat_id']),
                     user_id=join_request['user_id']
                 )
                 
@@ -1103,7 +1103,7 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
                 try:
                     # Approve the join request
                     await bot_instance.approve_chat_join_request(
-                        chat_id=join_request['chat_id'],
+                        chat_id=int(join_request['chat_id']),
                         user_id=join_request['user_id']
                     )
                     

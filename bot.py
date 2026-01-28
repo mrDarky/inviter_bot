@@ -296,7 +296,7 @@ async def on_join_request(update: ChatJoinRequest):
             await bot.approve_chat_join_request(chat.id, user.id)
             # Get the join request we just created
             join_requests = await db.get_join_requests_by_user(user.id)
-            pending_req = next((req for req in join_requests if req['chat_id'] == chat.id and req['status'] == 'pending'), None)
+            pending_req = next((req for req in join_requests if int(req['chat_id']) == chat.id and req['status'] == 'pending'), None)
             if pending_req:
                 await db.approve_join_request(pending_req['id'])
             await db.log_action(user.id, "auto_approved", "Immediate approval")
@@ -690,7 +690,7 @@ async def send_next_question(user_id: int, current_question_id: int):
                 
                 for req in pending_requests:
                     try:
-                        await bot.approve_chat_join_request(req['chat_id'], user_id)
+                        await bot.approve_chat_join_request(int(req['chat_id']), user_id)
                         await db.approve_join_request(req['id'])
                         await db.log_action(user_id, "auto_approved", f"After onboarding completion")
                     except Exception as e:
