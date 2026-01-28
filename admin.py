@@ -959,6 +959,23 @@ async def toggle_menu_item(menu_id: int, _: None = Depends(require_auth)):
     return {"status": "success", "message": "Menu item toggled"}
 
 
+# Helper function to get chat info with caching
+async def get_chat_info_cached(bot_instance, chat_id: int, cache: dict) -> str:
+    """Get chat info with caching to avoid redundant API calls"""
+    if chat_id in cache:
+        return cache[chat_id]
+    
+    try:
+        chat = await bot_instance.get_chat(chat_id)
+        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+    except Exception as chat_error:
+        logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
+        chat_title = f"Chat {chat_id}"
+    
+    cache[chat_id] = chat_title
+    return chat_title
+
+
 # Invite requests API endpoints
 @app.post("/api/invite-requests/approve")
 async def approve_join_requests(request_ids: List[int], _: None = Depends(require_auth)):
@@ -978,8 +995,10 @@ async def approve_join_requests(request_ids: List[int], _: None = Depends(requir
         
         success_count = 0
         fail_count = 0
+        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
         
         for request_id in request_ids:
+            join_request = None
             try:
                 # Get request details
                 join_request = await db.get_join_request_by_id(request_id)
@@ -990,14 +1009,8 @@ async def approve_join_requests(request_ids: List[int], _: None = Depends(requir
                 chat_id = int(join_request['chat_id'])
                 user_id = int(join_request['user_id'])
                 
-                # Try to get chat info for logging
-                chat_title = None
-                try:
-                    chat = await bot_instance.get_chat(chat_id)
-                    chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                except Exception as chat_error:
-                    logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
-                    chat_title = f"Chat {chat_id}"
+                # Get chat info for logging (with caching)
+                chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
                 
                 # Log the approval attempt with channel info
                 logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
@@ -1050,8 +1063,10 @@ async def deny_join_requests(request_ids: List[int], _: None = Depends(require_a
         
         success_count = 0
         fail_count = 0
+        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
         
         for request_id in request_ids:
+            join_request = None
             try:
                 # Get request details
                 join_request = await db.get_join_request_by_id(request_id)
@@ -1062,14 +1077,8 @@ async def deny_join_requests(request_ids: List[int], _: None = Depends(require_a
                 chat_id = int(join_request['chat_id'])
                 user_id = int(join_request['user_id'])
                 
-                # Try to get chat info for logging
-                chat_title = None
-                try:
-                    chat = await bot_instance.get_chat(chat_id)
-                    chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                except Exception as chat_error:
-                    logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
-                    chat_title = f"Chat {chat_id}"
+                # Get chat info for logging (with caching)
+                chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
                 
                 # Log the deny attempt with channel info
                 logger.info(f"Denying join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
@@ -1125,6 +1134,7 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
         fail_count = 0
         batch_size = 100
         offset = 0
+        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
         
         while True:
             pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
@@ -1136,14 +1146,8 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
                     chat_id = int(join_request['chat_id'])
                     user_id = int(join_request['user_id'])
                     
-                    # Try to get chat info for logging
-                    chat_title = None
-                    try:
-                        chat = await bot_instance.get_chat(chat_id)
-                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                    except Exception as chat_error:
-                        logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
-                        chat_title = f"Chat {chat_id}"
+                    # Get chat info for logging (with caching)
+                    chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
                     
                     # Log the approval attempt with channel info
                     logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
@@ -1202,6 +1206,7 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
         fail_count = 0
         batch_size = 100
         offset = 0
+        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
         
         while True:
             pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
@@ -1213,14 +1218,8 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
                     chat_id = int(join_request['chat_id'])
                     user_id = int(join_request['user_id'])
                     
-                    # Try to get chat info for logging
-                    chat_title = None
-                    try:
-                        chat = await bot_instance.get_chat(chat_id)
-                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                    except Exception as chat_error:
-                        logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
-                        chat_title = f"Chat {chat_id}"
+                    # Get chat info for logging (with caching)
+                    chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
                     
                     # Log the deny attempt with channel info
                     logger.info(f"Auto-denying join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
