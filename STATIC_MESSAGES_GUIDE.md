@@ -42,6 +42,17 @@ Upload media files directly to Telegram:
 - File IDs are stored in the database for reuse
 - Requires `ADMIN_CHAT_ID` environment variable to be set
 
+### 5. Send Test Message
+Test static messages before they're sent to all users:
+- Click the green "Send Test" button (with send icon) in the Actions column
+- Enter a Telegram user ID (numeric) or username (with or without @)
+- The bot sends the exact message configuration to the specified user
+- Supports all media types and button configurations
+- Validates user existence in database before sending
+- Provides specific error messages if user is not found
+
+**Note:** Users must have interacted with the bot before you can send them a test message. The user must exist in the database.
+
 ## Technical Details
 
 ### Database Schema Changes
@@ -96,6 +107,22 @@ To get your Telegram user ID:
 9. Preview the message in real-time
 10. Click "Add Message"
 
+### Testing a Static Message
+
+After creating a static message, you can test it before it's sent to all users:
+
+1. Find your message in the Static Messages table
+2. Click the green "Send Test" button (with send icon) in the Actions column
+3. In the popup, enter either:
+   - A Telegram user ID (e.g., `12345678`)
+   - A username with @ (e.g., `@johndoe`)
+   - A username without @ (e.g., `johndoe`)
+4. Click "Send Test"
+5. The message will be sent to that user immediately
+6. Check that the message appears correctly with media and buttons
+
+**Note:** The user must have interacted with your bot before. If you get an error that the user is not found, make sure the user has started the bot or joined your channel.
+
 ### Testing the Implementation
 
 Run the test files in /tmp:
@@ -145,3 +172,10 @@ Possible future improvements:
 - Only use Telegram-supported tags
 - Check for typos in HTML tags
 - Use live preview to verify rendering
+
+### Test Message Not Sending
+- Verify the user has interacted with the bot (started it or joined your channel)
+- Check that the user ID or username is correct
+- Ensure the bot token is configured properly
+- If using username, make sure it matches the username in the database (case-sensitive)
+- Try using the numeric user ID instead of username for more reliable delivery
