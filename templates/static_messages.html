@@ -611,7 +611,9 @@ async function sendTestMessage() {
             showNotification(data.message, 'success');
             // Close modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('sendTestModal'));
-            modal.hide();
+            if (modal) {
+                modal.hide();
+            }
         } else {
             showNotification(data.detail || 'Failed to send test message', 'error');
         }

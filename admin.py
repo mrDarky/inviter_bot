@@ -726,11 +726,10 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
         if not msg:
             raise HTTPException(status_code=404, detail="Static message not found")
         
-        # Convert msg to dict if it's not already
-        if msg:
-            columns = ['id', 'day_number', 'text', 'html_text', 'media_type', 'media_file_id', 
-                      'buttons_config', 'send_time', 'additional_minutes', 'is_active', 'created_at']
-            msg = dict(zip(columns, msg))
+        # Convert msg to dict
+        columns = ['id', 'day_number', 'text', 'html_text', 'media_type', 'media_file_id', 
+                  'buttons_config', 'send_time', 'additional_minutes', 'is_active', 'created_at']
+        msg = dict(zip(columns, msg))
         
         # Determine target user ID
         target = request.target.strip()
@@ -739,6 +738,18 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
         # Check if target is a numeric user ID or username
         if target.isdigit():
             user_id = int(target)
+            # Verify user exists in database
+            async with db.get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT user_id FROM users WHERE user_id = ?",
+                    (user_id,)
+                )
+                result = await cursor.fetchone()
+                if not result:
+                    raise HTTPException(
+                        status_code=404, 
+                        detail=f"User ID {user_id} not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
         elif target.startswith('@'):
             # Remove @ if present
             username = target[1:]
@@ -751,6 +762,11 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 result = await cursor.fetchone()
                 if result:
                     user_id = result[0]
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Username '@{username}' not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
         else:
             # Assume it's a username without @
             async with db.get_connection() as conn:
@@ -761,47 +777,52 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 result = await cursor.fetchone()
                 if result:
                     user_id = result[0]
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Username '{target}' not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
         
         if not user_id:
-            raise HTTPException(status_code=400, detail="Could not resolve user ID from target. Use numeric user ID or check if username exists in database.")
+            raise HTTPException(status_code=400, detail="Invalid target format. Use numeric user ID or username.")
         
         bot_instance = Bot(token=bot_token)
         
-        # Prepare message content
-        text = msg['html_text'] if msg['html_text'] else msg['text']
-        parse_mode = "HTML" if msg['html_text'] else None
-        media_type = msg.get('media_type', 'text')
-        media_file_id = msg.get('media_file_id')
-        buttons_config = msg.get('buttons_config')
-        
-        # Create markup with buttons
-        reply_markup = None
-        if buttons_config and buttons_config.strip():
-            rows = []
-            for line in buttons_config.strip().split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Split by comma for multiple buttons in one row
-                buttons_in_row = []
-                for button_str in line.split(','):
-                    button_str = button_str.strip()
-                    if '|' in button_str:
-                        parts = button_str.split('|', 1)
-                        button_text = parts[0].strip()
-                        url = parts[1].strip()
-                        if button_text and url:
-                            buttons_in_row.append(InlineKeyboardButton(text=button_text, url=url))
-                
-                if buttons_in_row:
-                    rows.append(buttons_in_row)
-            
-            if rows:
-                reply_markup = InlineKeyboardMarkup(inline_keyboard=rows)
-        
-        # Send based on media type
         try:
+            # Prepare message content
+            text = msg['html_text'] if msg['html_text'] else msg['text']
+            parse_mode = "HTML" if msg['html_text'] else None
+            media_type = msg.get('media_type', 'text')
+            media_file_id = msg.get('media_file_id')
+            buttons_config = msg.get('buttons_config')
+            
+            # Create markup with buttons
+            reply_markup = None
+            if buttons_config and buttons_config.strip():
+                rows = []
+                for line in buttons_config.strip().split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Split by comma for multiple buttons in one row
+                    buttons_in_row = []
+                    for button_str in line.split(','):
+                        button_str = button_str.strip()
+                        if '|' in button_str:
+                            parts = button_str.split('|', 1)
+                            button_text = parts[0].strip()
+                            url = parts[1].strip()
+                            if button_text and url:
+                                buttons_in_row.append(InlineKeyboardButton(text=button_text, url=url))
+                    
+                    if buttons_in_row:
+                        rows.append(buttons_in_row)
+                
+                if rows:
+                    reply_markup = InlineKeyboardMarkup(inline_keyboard=rows)
+            
+            # Send based on media type
             if media_type == 'text' or not media_file_id:
                 await bot_instance.send_message(
                     user_id, 
@@ -878,16 +899,16 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     reply_markup=reply_markup
                 )
             
-            await bot_instance.session.close()
-            
             return {
                 "status": "success",
                 "message": f"Test message sent successfully to user {user_id}"
             }
         except Exception as e:
-            await bot_instance.session.close()
             logger.error(f"Error sending test message: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+        finally:
+            # Always close the bot session
+            await bot_instance.session.close()
             
     except HTTPException:
         raise
