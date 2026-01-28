@@ -1034,46 +1034,52 @@ async def approve_join_requests(request: ApproveRequestsWithSession, _: None = D
                     api_hash=session_data['api_hash']
                 )
             
-            await client.start()
-            
-            # Process requests with Pyrogram
-            for request_id in request.request_ids:
-                join_request = None
-                try:
-                    # Get request details
-                    join_request = await db.get_join_request_by_id(request_id)
-                    if not join_request or join_request['status'] != 'pending':
-                        fail_count += 1
-                        continue
-                    
-                    chat_id = int(join_request['chat_id'])
-                    user_id = int(join_request['user_id'])
-                    
-                    # Get chat info (Pyrogram)
+            try:
+                await client.start()
+                
+                # Process requests with Pyrogram
+                for request_id in request.request_ids:
+                    join_request = None
                     try:
-                        chat = await client.get_chat(chat_id)
-                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                    except:
-                        chat_title = f"Chat {chat_id}"
-                    
-                    logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
-                    
-                    # Approve using Pyrogram
-                    await client.approve_chat_join_request(
-                        chat_id=chat_id,
-                        user_id=user_id
-                    )
-                    
-                    # Update database
-                    await db.approve_join_request(request_id)
-                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
-                    success_count += 1
-                    logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
-                except Exception as e:
-                    logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
-                    fail_count += 1
-            
-            await client.stop()
+                        # Get request details
+                        join_request = await db.get_join_request_by_id(request_id)
+                        if not join_request or join_request['status'] != 'pending':
+                            fail_count += 1
+                            continue
+                        
+                        chat_id = int(join_request['chat_id'])
+                        user_id = int(join_request['user_id'])
+                        
+                        # Get chat info with caching (Pyrogram)
+                        if chat_id in chat_info_cache:
+                            chat_title = chat_info_cache[chat_id]
+                        else:
+                            try:
+                                chat = await client.get_chat(chat_id)
+                                chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                                chat_info_cache[chat_id] = chat_title
+                            except Exception as e:
+                                logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {e}")
+                                chat_title = f"Chat {chat_id}"
+                        
+                        logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
+                        
+                        # Approve using Pyrogram
+                        await client.approve_chat_join_request(
+                            chat_id=chat_id,
+                            user_id=user_id
+                        )
+                        
+                        # Update database
+                        await db.approve_join_request(request_id)
+                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
+                        success_count += 1
+                        logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
+                    except Exception as e:
+                        logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
+                        fail_count += 1
+            finally:
+                await client.stop()
         else:
             # Use default bot token
             from aiogram import Bot
@@ -1088,41 +1094,42 @@ async def approve_join_requests(request: ApproveRequestsWithSession, _: None = D
             
             bot_instance = Bot(token=bot_token)
             
-            # Process requests with aiogram
-            for request_id in request.request_ids:
-                join_request = None
-                try:
-                    # Get request details
-                    join_request = await db.get_join_request_by_id(request_id)
-                    if not join_request or join_request['status'] != 'pending':
+            try:
+                # Process requests with aiogram
+                for request_id in request.request_ids:
+                    join_request = None
+                    try:
+                        # Get request details
+                        join_request = await db.get_join_request_by_id(request_id)
+                        if not join_request or join_request['status'] != 'pending':
+                            fail_count += 1
+                            continue
+                        
+                        chat_id = int(join_request['chat_id'])
+                        user_id = int(join_request['user_id'])
+                        
+                        # Get chat info for logging (with caching)
+                        chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
+                        
+                        # Log the approval attempt with channel info
+                        logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                        
+                        # Approve the join request
+                        await bot_instance.approve_chat_join_request(
+                            chat_id=chat_id,
+                            user_id=user_id
+                        )
+                        
+                        # Update database
+                        await db.approve_join_request(request_id)
+                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
+                        success_count += 1
+                        logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
+                    except Exception as e:
+                        logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
                         fail_count += 1
-                        continue
-                    
-                    chat_id = int(join_request['chat_id'])
-                    user_id = int(join_request['user_id'])
-                    
-                    # Get chat info for logging (with caching)
-                    chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
-                    
-                    # Log the approval attempt with channel info
-                    logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
-                    
-                    # Approve the join request
-                    await bot_instance.approve_chat_join_request(
-                        chat_id=chat_id,
-                        user_id=user_id
-                    )
-                    
-                    # Update database
-                    await db.approve_join_request(request_id)
-                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
-                    success_count += 1
-                    logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
-                except Exception as e:
-                    logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
-                    fail_count += 1
-            
-            await bot_instance.session.close()
+            finally:
+                await bot_instance.session.close()
         
         return {
             "status": "success",
@@ -1239,47 +1246,53 @@ async def approve_all_join_requests(request: ApproveAllWithSession, _: None = De
                     api_hash=session_data['api_hash']
                 )
             
-            await client.start()
-            
-            # Process all pending requests with Pyrogram
-            while True:
-                pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
-                if not pending_requests:
-                    break
+            try:
+                await client.start()
                 
-                for join_request in pending_requests:
-                    try:
-                        chat_id = int(join_request['chat_id'])
-                        user_id = int(join_request['user_id'])
-                        
-                        # Get chat info (Pyrogram)
+                # Process all pending requests with Pyrogram
+                while True:
+                    pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+                    if not pending_requests:
+                        break
+                    
+                    for join_request in pending_requests:
                         try:
-                            chat = await client.get_chat(chat_id)
-                            chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
-                        except:
-                            chat_title = f"Chat {chat_id}"
-                        
-                        logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
-                        
-                        # Approve using Pyrogram
-                        await client.approve_chat_join_request(
-                            chat_id=chat_id,
-                            user_id=user_id
-                        )
-                        
-                        # Update database
-                        await db.approve_join_request(join_request['id'])
-                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
-                        success_count += 1
-                        logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
-                    except Exception as e:
-                        logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
-                        fail_count += 1
-                
-                # Move to next batch
-                offset += batch_size
-            
-            await client.stop()
+                            chat_id = int(join_request['chat_id'])
+                            user_id = int(join_request['user_id'])
+                            
+                            # Get chat info with caching (Pyrogram)
+                            if chat_id in chat_info_cache:
+                                chat_title = chat_info_cache[chat_id]
+                            else:
+                                try:
+                                    chat = await client.get_chat(chat_id)
+                                    chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                                    chat_info_cache[chat_id] = chat_title
+                                except Exception as e:
+                                    logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {e}")
+                                    chat_title = f"Chat {chat_id}"
+                            
+                            logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
+                            
+                            # Approve using Pyrogram
+                            await client.approve_chat_join_request(
+                                chat_id=chat_id,
+                                user_id=user_id
+                            )
+                            
+                            # Update database
+                            await db.approve_join_request(join_request['id'])
+                            await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
+                            success_count += 1
+                            logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
+                        except Exception as e:
+                            logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
+                            fail_count += 1
+                    
+                    # Move to next batch
+                    offset += batch_size
+            finally:
+                await client.stop()
         else:
             # Use default bot token
             from aiogram import Bot
@@ -1294,42 +1307,43 @@ async def approve_all_join_requests(request: ApproveAllWithSession, _: None = De
             
             bot_instance = Bot(token=bot_token)
             
-            # Process all pending requests with aiogram
-            while True:
-                pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
-                if not pending_requests:
-                    break
-                
-                for join_request in pending_requests:
-                    try:
-                        chat_id = int(join_request['chat_id'])
-                        user_id = int(join_request['user_id'])
-                        
-                        # Get chat info for logging (with caching)
-                        chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
-                        
-                        # Log the approval attempt with channel info
-                        logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
-                        
-                        # Approve the join request
-                        await bot_instance.approve_chat_join_request(
-                            chat_id=chat_id,
-                            user_id=user_id
-                        )
-                        
-                        # Update database
-                        await db.approve_join_request(join_request['id'])
-                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
-                        success_count += 1
-                        logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
-                    except Exception as e:
-                        logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
-                        fail_count += 1
-                
-                # Move to next batch
-                offset += batch_size
-            
-            await bot_instance.session.close()
+            try:
+                # Process all pending requests with aiogram
+                while True:
+                    pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+                    if not pending_requests:
+                        break
+                    
+                    for join_request in pending_requests:
+                        try:
+                            chat_id = int(join_request['chat_id'])
+                            user_id = int(join_request['user_id'])
+                            
+                            # Get chat info for logging (with caching)
+                            chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
+                            
+                            # Log the approval attempt with channel info
+                            logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                            
+                            # Approve the join request
+                            await bot_instance.approve_chat_join_request(
+                                chat_id=chat_id,
+                                user_id=user_id
+                            )
+                            
+                            # Update database
+                            await db.approve_join_request(join_request['id'])
+                            await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
+                            success_count += 1
+                            logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
+                        except Exception as e:
+                            logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
+                            fail_count += 1
+                    
+                    # Move to next batch
+                    offset += batch_size
+            finally:
+                await bot_instance.session.close()
         
         return {
             "status": "success",

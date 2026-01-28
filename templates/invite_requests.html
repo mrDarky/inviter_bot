@@ -236,6 +236,12 @@ async function showSessionSelectionModal(action) {
     // Load sessions
     try {
         const response = await fetch('/api/sessions/list');
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to load sessions' }));
+            throw new Error(errorData.message || `HTTP error ${response.status}`);
+        }
+        
         const data = await response.json();
         
         const sessionSelect = document.getElementById('sessionSelect');
@@ -254,7 +260,7 @@ async function showSessionSelectionModal(action) {
         const modal = new bootstrap.Modal(document.getElementById('sessionSelectionModal'));
         modal.show();
     } catch (error) {
-        showNotification('Error loading sessions: ' + error, 'error');
+        showNotification('Error loading sessions: ' + error.message, 'error');
     }
 }
 
@@ -264,22 +270,23 @@ async function executeApproval() {
     const selectedSession = sessionSelect.value || null;
     
     const modal = bootstrap.Modal.getInstance(document.getElementById('sessionSelectionModal'));
-    modal.hide();
     
     if (currentAction === 'approve-selected') {
-        await performApproveSelected(selectedSession);
+        await performApproveSelected(selectedSession, modal);
     } else if (currentAction === 'approve-all') {
-        await performApproveAll(selectedSession);
+        await performApproveAll(selectedSession, modal);
     }
 }
 
-async function performApproveSelected(sessionName) {
+async function performApproveSelected(sessionName, modal) {
     if (selectedRequestIds.length === 0) {
         showNotification('Please select at least one request', 'error');
         return;
     }
     
     if (!confirm(`Approve ${selectedRequestIds.length} request(s)?`)) return;
+    
+    modal.hide();
     
     try {
         const response = await fetch('/api/invite-requests/approve', {
@@ -290,16 +297,24 @@ async function performApproveSelected(sessionName) {
                 session_name: sessionName
             })
         });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Request failed' }));
+            throw new Error(errorData.message || `HTTP error ${response.status}`);
+        }
+        
         const data = await response.json();
         showNotification(data.message, 'success');
         setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        showNotification('Error: ' + error, 'error');
+        showNotification('Error: ' + error.message, 'error');
     }
 }
 
-async function performApproveAll(sessionName) {
+async function performApproveAll(sessionName, modal) {
     if (!confirm('Approve all pending requests? This action will process all pending join requests.')) return;
+    
+    modal.hide();
     
     try {
         const response = await fetch('/api/invite-requests/approve-all', {
@@ -309,11 +324,17 @@ async function performApproveAll(sessionName) {
                 session_name: sessionName
             })
         });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Request failed' }));
+            throw new Error(errorData.message || `HTTP error ${response.status}`);
+        }
+        
         const data = await response.json();
         showNotification(data.message, 'success');
         setTimeout(() => location.reload(), 1000);
     } catch (error) {
-        showNotification('Error: ' + error, 'error');
+        showNotification('Error: ' + error.message, 'error');
     }
 }
 
