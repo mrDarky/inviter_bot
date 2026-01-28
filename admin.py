@@ -961,19 +961,35 @@ async def toggle_menu_item(menu_id: int, _: None = Depends(require_auth)):
 
 # Helper function to get chat info with caching
 async def get_chat_info_cached(bot_instance, chat_id: int, cache: dict) -> str:
-    """Get chat info with caching to avoid redundant API calls"""
+    """
+    Get chat info with caching to avoid redundant API calls.
+    
+    Args:
+        bot_instance: The Telegram bot instance
+        chat_id: The chat/channel ID
+        cache: Dictionary to cache successful lookups by chat_id
+    
+    Returns:
+        Chat title string or fallback "Chat {chat_id}" if not found
+    
+    Note:
+        - Only successful lookups are cached to allow retries on transient failures
+        - Cache lifetime is tied to the endpoint's execution
+        - Falls back to "Chat {chat_id}" on any error
+    """
     if chat_id in cache:
         return cache[chat_id]
     
     try:
         chat = await bot_instance.get_chat(chat_id)
         chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+        # Only cache successful lookups
+        cache[chat_id] = chat_title
+        return chat_title
     except Exception as chat_error:
         logger.warning(f"Could not fetch chat info for chat_id {chat_id}: {chat_error}")
-        chat_title = f"Chat {chat_id}"
-    
-    cache[chat_id] = chat_title
-    return chat_title
+        # Don't cache failures - return fallback without caching
+        return f"Chat {chat_id}"
 
 
 # Invite requests API endpoints
