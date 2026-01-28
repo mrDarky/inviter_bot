@@ -197,6 +197,10 @@
 
 {% block extra_js %}
 <script>
+// Session selection modal state
+let currentAction = null; // 'approve-selected', 'approve-all'
+let selectedRequestIds = [];
+
 function getSelectedRequestIds() {
     const checkboxes = document.querySelectorAll('.request-checkbox:checked');
     return Array.from(checkboxes).map(cb => parseInt(cb.value));
@@ -217,20 +221,74 @@ function toggleSelectAll() {
     document.querySelectorAll('.request-checkbox').forEach(cb => cb.checked = checked);
 }
 
-async function approveSelected() {
-    const requestIds = getSelectedRequestIds();
-    if (requestIds.length === 0) {
+// Load sessions and show modal
+async function showSessionSelectionModal(action) {
+    currentAction = action;
+    
+    if (action === 'approve-selected') {
+        selectedRequestIds = getSelectedRequestIds();
+        if (selectedRequestIds.length === 0) {
+            showNotification('Please select at least one request', 'error');
+            return;
+        }
+    }
+    
+    // Load sessions
+    try {
+        const response = await fetch('/api/sessions/list');
+        const data = await response.json();
+        
+        const sessionSelect = document.getElementById('sessionSelect');
+        sessionSelect.innerHTML = '<option value="">Bot (Default)</option>';
+        
+        if (data.sessions && data.sessions.length > 0) {
+            data.sessions.forEach(session => {
+                const option = document.createElement('option');
+                option.value = session.session_name;
+                option.textContent = `${session.user_info || session.session_name} (${session.session_type})`;
+                sessionSelect.appendChild(option);
+            });
+        }
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('sessionSelectionModal'));
+        modal.show();
+    } catch (error) {
+        showNotification('Error loading sessions: ' + error, 'error');
+    }
+}
+
+// Execute approval with selected session
+async function executeApproval() {
+    const sessionSelect = document.getElementById('sessionSelect');
+    const selectedSession = sessionSelect.value || null;
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('sessionSelectionModal'));
+    modal.hide();
+    
+    if (currentAction === 'approve-selected') {
+        await performApproveSelected(selectedSession);
+    } else if (currentAction === 'approve-all') {
+        await performApproveAll(selectedSession);
+    }
+}
+
+async function performApproveSelected(sessionName) {
+    if (selectedRequestIds.length === 0) {
         showNotification('Please select at least one request', 'error');
         return;
     }
     
-    if (!confirm(`Approve ${requestIds.length} request(s)?`)) return;
+    if (!confirm(`Approve ${selectedRequestIds.length} request(s)?`)) return;
     
     try {
         const response = await fetch('/api/invite-requests/approve', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(requestIds)
+            body: JSON.stringify({
+                request_ids: selectedRequestIds,
+                session_name: sessionName
+            })
         });
         const data = await response.json();
         showNotification(data.message, 'success');
@@ -238,6 +296,34 @@ async function approveSelected() {
     } catch (error) {
         showNotification('Error: ' + error, 'error');
     }
+}
+
+async function performApproveAll(sessionName) {
+    if (!confirm('Approve all pending requests? This action will process all pending join requests.')) return;
+    
+    try {
+        const response = await fetch('/api/invite-requests/approve-all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                session_name: sessionName
+            })
+        });
+        const data = await response.json();
+        showNotification(data.message, 'success');
+        setTimeout(() => location.reload(), 1000);
+    } catch (error) {
+        showNotification('Error: ' + error, 'error');
+    }
+}
+
+// Updated button handlers
+function approveSelected() {
+    showSessionSelectionModal('approve-selected');
+}
+
+function approveAll() {
+    showSessionSelectionModal('approve-all');
 }
 
 async function denySelected() {
@@ -263,22 +349,6 @@ async function denySelected() {
     }
 }
 
-async function approveAll() {
-    if (!confirm('Approve all pending requests? This action will process all pending join requests.')) return;
-    
-    try {
-        const response = await fetch('/api/invite-requests/approve-all', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'}
-        });
-        const data = await response.json();
-        showNotification(data.message, 'success');
-        setTimeout(() => location.reload(), 1000);
-    } catch (error) {
-        showNotification('Error: ' + error, 'error');
-    }
-}
-
 async function denyAll() {
     if (!confirm('Deny all pending requests? This action will reject all pending join requests.')) return;
     
@@ -295,4 +365,31 @@ async function denyAll() {
     }
 }
 </script>
+
+<!-- Session Selection Modal -->
+<div class="modal fade" id="sessionSelectionModal" tabindex="-1" aria-labelledby="sessionSelectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sessionSelectionModalLabel">Select Session for Approval</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="sessionSelect" class="form-label">Session</label>
+                    <select class="form-select" id="sessionSelect">
+                        <option value="">Bot (Default)</option>
+                    </select>
+                    <div class="form-text">Select which session to use for approving requests. Default is the bot.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="executeApproval()">
+                    <i class="bi bi-check-circle"></i> Approve
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

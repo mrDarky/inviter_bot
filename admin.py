@@ -189,6 +189,15 @@ class PyrogramCheckAccessRequest(BaseModel):
     channel_id: str
 
 
+class ApproveRequestsWithSession(BaseModel):
+    request_ids: List[int]
+    session_name: Optional[str] = None  # None means use bot, otherwise use specified session
+
+
+class ApproveAllWithSession(BaseModel):
+    session_name: Optional[str] = None  # None means use bot, otherwise use specified session
+
+
 class ScheduleMessageRequest(BaseModel):
     text: str
     html_text: Optional[str] = None
@@ -994,59 +1003,126 @@ async def get_chat_info_cached(bot_instance, chat_id: int, cache: dict) -> str:
 
 # Invite requests API endpoints
 @app.post("/api/invite-requests/approve")
-async def approve_join_requests(request_ids: List[int], _: None = Depends(require_auth)):
+async def approve_join_requests(request: ApproveRequestsWithSession, _: None = Depends(require_auth)):
     """Approve selected join requests"""
     try:
-        from aiogram import Bot
-        
-        # Get bot token
-        bot_token = await db.get_setting('bot_token')
-        if not bot_token:
-            bot_token = os.getenv('BOT_TOKEN')
-        
-        if not bot_token:
-            raise HTTPException(status_code=400, detail="Bot token not configured")
-        
-        bot_instance = Bot(token=bot_token)
-        
         success_count = 0
         fail_count = 0
-        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
+        chat_info_cache = {}
         
-        for request_id in request_ids:
-            join_request = None
-            try:
-                # Get request details
-                join_request = await db.get_join_request_by_id(request_id)
-                if not join_request or join_request['status'] != 'pending':
-                    fail_count += 1
-                    continue
-                
-                chat_id = int(join_request['chat_id'])
-                user_id = int(join_request['user_id'])
-                
-                # Get chat info for logging (with caching)
-                chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
-                
-                # Log the approval attempt with channel info
-                logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
-                
-                # Approve the join request
-                await bot_instance.approve_chat_join_request(
-                    chat_id=chat_id,
-                    user_id=user_id
+        # Determine which client to use
+        if request.session_name:
+            # Use Pyrogram session
+            session_data = await db.get_pyrogram_session(request.session_name)
+            if not session_data:
+                raise HTTPException(status_code=400, detail="Session not found")
+            
+            session_path = os.path.join(SESSIONS_DIR, request.session_name)
+            
+            # Create client - handle both user and bot sessions
+            if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+                client = Client(
+                    name=session_path,
+                    api_id=session_data['api_id'],
+                    api_hash=session_data['api_hash'],
+                    bot_token=session_data['bot_token']
                 )
-                
-                # Update database
-                await db.approve_join_request(request_id)
-                await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
-                success_count += 1
-                logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
-            except Exception as e:
-                logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
-                fail_count += 1
-        
-        await bot_instance.session.close()
+            else:
+                client = Client(
+                    name=session_path,
+                    api_id=session_data['api_id'],
+                    api_hash=session_data['api_hash']
+                )
+            
+            await client.start()
+            
+            # Process requests with Pyrogram
+            for request_id in request.request_ids:
+                join_request = None
+                try:
+                    # Get request details
+                    join_request = await db.get_join_request_by_id(request_id)
+                    if not join_request or join_request['status'] != 'pending':
+                        fail_count += 1
+                        continue
+                    
+                    chat_id = int(join_request['chat_id'])
+                    user_id = int(join_request['user_id'])
+                    
+                    # Get chat info (Pyrogram)
+                    try:
+                        chat = await client.get_chat(chat_id)
+                        chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                    except:
+                        chat_title = f"Chat {chat_id}"
+                    
+                    logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
+                    
+                    # Approve using Pyrogram
+                    await client.approve_chat_join_request(
+                        chat_id=chat_id,
+                        user_id=user_id
+                    )
+                    
+                    # Update database
+                    await db.approve_join_request(request_id)
+                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
+                    success_count += 1
+                    logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
+                except Exception as e:
+                    logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
+                    fail_count += 1
+            
+            await client.stop()
+        else:
+            # Use default bot token
+            from aiogram import Bot
+            
+            # Get bot token
+            bot_token = await db.get_setting('bot_token')
+            if not bot_token:
+                bot_token = os.getenv('BOT_TOKEN')
+            
+            if not bot_token:
+                raise HTTPException(status_code=400, detail="Bot token not configured")
+            
+            bot_instance = Bot(token=bot_token)
+            
+            # Process requests with aiogram
+            for request_id in request.request_ids:
+                join_request = None
+                try:
+                    # Get request details
+                    join_request = await db.get_join_request_by_id(request_id)
+                    if not join_request or join_request['status'] != 'pending':
+                        fail_count += 1
+                        continue
+                    
+                    chat_id = int(join_request['chat_id'])
+                    user_id = int(join_request['user_id'])
+                    
+                    # Get chat info for logging (with caching)
+                    chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
+                    
+                    # Log the approval attempt with channel info
+                    logger.info(f"Approving join request {request_id} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                    
+                    # Approve the join request
+                    await bot_instance.approve_chat_join_request(
+                        chat_id=chat_id,
+                        user_id=user_id
+                    )
+                    
+                    # Update database
+                    await db.approve_join_request(request_id)
+                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
+                    success_count += 1
+                    logger.info(f"Successfully approved join request {request_id} for user {user_id} in channel: {chat_title}")
+                except Exception as e:
+                    logger.error(f"Error approving join request {request_id} (chat_id: {join_request.get('chat_id', 'unknown') if join_request else 'unknown'}): {e}")
+                    fail_count += 1
+            
+            await bot_instance.session.close()
         
         return {
             "status": "success",
@@ -1130,63 +1206,130 @@ async def deny_join_requests(request_ids: List[int], _: None = Depends(require_a
 
 
 @app.post("/api/invite-requests/approve-all")
-async def approve_all_join_requests(_: None = Depends(require_auth)):
+async def approve_all_join_requests(request: ApproveAllWithSession, _: None = Depends(require_auth)):
     """Approve all pending join requests"""
     try:
-        from aiogram import Bot
-        
-        # Get bot token
-        bot_token = await db.get_setting('bot_token')
-        if not bot_token:
-            bot_token = os.getenv('BOT_TOKEN')
-        
-        if not bot_token:
-            raise HTTPException(status_code=400, detail="Bot token not configured")
-        
-        bot_instance = Bot(token=bot_token)
-        
-        # Get all pending requests with batching
         success_count = 0
         fail_count = 0
         batch_size = 100
         offset = 0
-        chat_info_cache = {}  # Cache for chat info to avoid redundant API calls
+        chat_info_cache = {}
         
-        while True:
-            pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
-            if not pending_requests:
-                break
+        # Determine which client to use
+        if request.session_name:
+            # Use Pyrogram session
+            session_data = await db.get_pyrogram_session(request.session_name)
+            if not session_data:
+                raise HTTPException(status_code=400, detail="Session not found")
             
-            for join_request in pending_requests:
-                try:
-                    chat_id = int(join_request['chat_id'])
-                    user_id = int(join_request['user_id'])
-                    
-                    # Get chat info for logging (with caching)
-                    chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
-                    
-                    # Log the approval attempt with channel info
-                    logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
-                    
-                    # Approve the join request
-                    await bot_instance.approve_chat_join_request(
-                        chat_id=chat_id,
-                        user_id=user_id
-                    )
-                    
-                    # Update database
-                    await db.approve_join_request(join_request['id'])
-                    await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
-                    success_count += 1
-                    logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
-                except Exception as e:
-                    logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
-                    fail_count += 1
+            session_path = os.path.join(SESSIONS_DIR, request.session_name)
             
-            # Move to next batch
-            offset += batch_size
-        
-        await bot_instance.session.close()
+            # Create client - handle both user and bot sessions
+            if session_data.get('session_type') == 'bot' and session_data.get('bot_token'):
+                client = Client(
+                    name=session_path,
+                    api_id=session_data['api_id'],
+                    api_hash=session_data['api_hash'],
+                    bot_token=session_data['bot_token']
+                )
+            else:
+                client = Client(
+                    name=session_path,
+                    api_id=session_data['api_id'],
+                    api_hash=session_data['api_hash']
+                )
+            
+            await client.start()
+            
+            # Process all pending requests with Pyrogram
+            while True:
+                pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+                if not pending_requests:
+                    break
+                
+                for join_request in pending_requests:
+                    try:
+                        chat_id = int(join_request['chat_id'])
+                        user_id = int(join_request['user_id'])
+                        
+                        # Get chat info (Pyrogram)
+                        try:
+                            chat = await client.get_chat(chat_id)
+                            chat_title = chat.title if hasattr(chat, 'title') else f"Chat {chat_id}"
+                        except:
+                            chat_title = f"Chat {chat_id}"
+                        
+                        logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id}) using session {request.session_name}")
+                        
+                        # Approve using Pyrogram
+                        await client.approve_chat_join_request(
+                            chat_id=chat_id,
+                            user_id=user_id
+                        )
+                        
+                        # Update database
+                        await db.approve_join_request(join_request['id'])
+                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}, Session: {request.session_name}")
+                        success_count += 1
+                        logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
+                    except Exception as e:
+                        logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
+                        fail_count += 1
+                
+                # Move to next batch
+                offset += batch_size
+            
+            await client.stop()
+        else:
+            # Use default bot token
+            from aiogram import Bot
+            
+            # Get bot token
+            bot_token = await db.get_setting('bot_token')
+            if not bot_token:
+                bot_token = os.getenv('BOT_TOKEN')
+            
+            if not bot_token:
+                raise HTTPException(status_code=400, detail="Bot token not configured")
+            
+            bot_instance = Bot(token=bot_token)
+            
+            # Process all pending requests with aiogram
+            while True:
+                pending_requests = await db.get_join_requests(status='pending', limit=batch_size, offset=offset)
+                if not pending_requests:
+                    break
+                
+                for join_request in pending_requests:
+                    try:
+                        chat_id = int(join_request['chat_id'])
+                        user_id = int(join_request['user_id'])
+                        
+                        # Get chat info for logging (with caching)
+                        chat_title = await get_chat_info_cached(bot_instance, chat_id, chat_info_cache)
+                        
+                        # Log the approval attempt with channel info
+                        logger.info(f"Auto-approving join request {join_request['id']} for user {user_id} in channel: {chat_title} (chat_id: {chat_id})")
+                        
+                        # Approve the join request
+                        await bot_instance.approve_chat_join_request(
+                            chat_id=chat_id,
+                            user_id=user_id
+                        )
+                        
+                        # Update database
+                        await db.approve_join_request(join_request['id'])
+                        await db.log_action(user_id, "join_request_approved", f"Chat ID: {chat_id}, Channel: {chat_title}")
+                        success_count += 1
+                        logger.info(f"Successfully auto-approved join request {join_request['id']} for user {user_id} in channel: {chat_title}")
+                    except Exception as e:
+                        logger.error(f"Error approving join request {join_request['id']} (chat_id: {join_request.get('chat_id', 'unknown')}): {e}")
+                        fail_count += 1
+                
+                # Move to next batch
+                offset += batch_size
+            
+            await bot_instance.session.close()
         
         return {
             "status": "success",
@@ -1270,6 +1413,31 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
         raise
     except Exception as e:
         logger.error(f"Error denying all join requests: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/sessions/list")
+async def get_sessions_list(_: None = Depends(require_auth)):
+    """Get list of available sessions for approval"""
+    try:
+        sessions = await db.get_pyrogram_sessions()
+        
+        # Filter only active sessions
+        active_sessions = [
+            {
+                "session_name": s["session_name"],
+                "user_info": s.get("user_info", "Unknown"),
+                "session_type": s.get("session_type", "user"),
+                "is_active": s.get("is_active", 0)
+            }
+            for s in sessions
+            if s.get("is_active", 0) == 1
+        ]
+        
+        return {
+            "status": "success",
+            "sessions": active_sessions
+        }
+    except Exception as e:
+        logger.error(f"Error getting sessions list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
