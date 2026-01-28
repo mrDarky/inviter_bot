@@ -990,7 +990,7 @@ async def approve_join_requests(request_ids: List[int], _: None = Depends(requir
                 # Approve the join request
                 await bot_instance.approve_chat_join_request(
                     chat_id=int(join_request['chat_id']),
-                    user_id=join_request['user_id']
+                    user_id=int(join_request['user_id'])
                 )
                 
                 # Update database
@@ -1045,8 +1045,8 @@ async def deny_join_requests(request_ids: List[int], _: None = Depends(require_a
                 
                 # Deny the join request
                 await bot_instance.decline_chat_join_request(
-                    chat_id=join_request['chat_id'],
-                    user_id=join_request['user_id']
+                    chat_id=int(join_request['chat_id']),
+                    user_id=int(join_request['user_id'])
                 )
                 
                 # Update database
@@ -1104,7 +1104,7 @@ async def approve_all_join_requests(_: None = Depends(require_auth)):
                     # Approve the join request
                     await bot_instance.approve_chat_join_request(
                         chat_id=int(join_request['chat_id']),
-                        user_id=join_request['user_id']
+                        user_id=int(join_request['user_id'])
                     )
                     
                     # Update database
@@ -1164,8 +1164,8 @@ async def deny_all_join_requests(_: None = Depends(require_auth)):
                 try:
                     # Deny the join request
                     await bot_instance.decline_chat_join_request(
-                        chat_id=join_request['chat_id'],
-                        user_id=join_request['user_id']
+                        chat_id=int(join_request['chat_id']),
+                        user_id=int(join_request['user_id'])
                     )
                     
                     # Update database
