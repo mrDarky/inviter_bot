@@ -824,14 +824,14 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     reply_markup = InlineKeyboardMarkup(inline_keyboard=rows)
             
             # Send based on media type
-            if media_type == 'text' or not media_file_id:
+            if media_type == 'text':
                 await bot_instance.send_message(
                     user_id, 
                     text, 
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'photo':
+            elif media_type == 'photo' and media_file_id:
                 await bot_instance.send_photo(
                     user_id,
                     media_file_id,
@@ -839,7 +839,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'video':
+            elif media_type == 'video' and media_file_id:
                 await bot_instance.send_video(
                     user_id,
                     media_file_id,
@@ -847,7 +847,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'video_note':
+            elif media_type == 'video_note' and media_file_id:
                 # Video notes don't support captions or buttons, send text separately
                 await bot_instance.send_video_note(user_id, media_file_id)
                 if text:
@@ -857,7 +857,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                         parse_mode=parse_mode,
                         reply_markup=reply_markup
                     )
-            elif media_type == 'animation':
+            elif media_type == 'animation' and media_file_id:
                 await bot_instance.send_animation(
                     user_id,
                     media_file_id,
@@ -865,7 +865,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'document':
+            elif media_type == 'document' and media_file_id:
                 await bot_instance.send_document(
                     user_id,
                     media_file_id,
@@ -873,7 +873,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'audio':
+            elif media_type == 'audio' and media_file_id:
                 await bot_instance.send_audio(
                     user_id,
                     media_file_id,
@@ -881,7 +881,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     parse_mode=parse_mode,
                     reply_markup=reply_markup
                 )
-            elif media_type == 'voice':
+            elif media_type == 'voice' and media_file_id:
                 # Voice messages don't support captions, send text separately
                 await bot_instance.send_voice(user_id, media_file_id)
                 if text:
@@ -892,7 +892,9 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                         reply_markup=reply_markup
                     )
             else:
-                # Fallback to text
+                # Fallback to text if media type is not recognized or media file is missing
+                if media_type != 'text' and not media_file_id:
+                    logger.warning(f"Media type '{media_type}' specified but no media_file_id provided for test message {message_id} to user {user_id}. Falling back to text only.")
                 await bot_instance.send_message(
                     user_id,
                     text,
