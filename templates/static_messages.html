@@ -61,6 +61,12 @@
                         </td>
                         <td>
                             <span class="badge bg-info">{{ msg.media_type or 'text' }}</span>
+                            {% if msg.media_file_id %}
+                            <br>
+                            <small class="text-muted" style="font-size: 0.7rem;" title="{{ msg.media_file_id }}">
+                                ID: {{ msg.media_file_id[:15] }}...
+                            </small>
+                            {% endif %}
                         </td>
                         <td>
                             <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
@@ -159,14 +165,28 @@
                         </div>
                         
                         <div class="mb-3" id="addMediaUpload" style="display: none;">
-                            <label class="form-label">Upload Media File</label>
-                            <input type="file" class="form-control" id="addMediaFile" accept="image/*,video/*,audio/*">
-                            <small class="text-muted">Upload file to Telegram and get file ID</small>
-                            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="uploadMedia('add')">
-                                <i class="bi bi-upload"></i> Upload
-                            </button>
-                            <div id="addUploadStatus" class="mt-2"></div>
-                            <input type="hidden" id="addMediaFileId">
+                            <label class="form-label">Media File</label>
+                            
+                            <!-- Option 1: Upload File -->
+                            <div class="card mb-2">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Option 1: Upload File</h6>
+                                    <input type="file" class="form-control mb-2" id="addMediaFile" accept="image/*,video/*,audio/*">
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="uploadMedia('add')">
+                                        <i class="bi bi-upload"></i> Upload
+                                    </button>
+                                    <div id="addUploadStatus" class="mt-2"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Option 2: Enter File ID Manually -->
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Option 2: Enter File ID Manually</h6>
+                                    <small class="text-muted d-block mb-2">Get file_id from messages in your admin chat or from previously uploaded files</small>
+                                    <input type="text" class="form-control" id="addMediaFileId" placeholder="Paste file_id here (e.g., AgACAgIAAxkBAAI...)">
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="mb-3">
@@ -255,14 +275,47 @@
                         </div>
                         
                         <div class="mb-3" id="editMediaUpload">
-                            <label class="form-label">Upload Media File</label>
-                            <input type="file" class="form-control" id="editMediaFile" accept="image/*,video/*,audio/*">
-                            <small class="text-muted">Upload new file or keep existing</small>
-                            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="uploadMedia('edit')">
-                                <i class="bi bi-upload"></i> Upload
-                            </button>
-                            <div id="editUploadStatus" class="mt-2"></div>
-                            <input type="hidden" id="editMediaFileId">
+                            <label class="form-label">Media File</label>
+                            
+                            <!-- Current File ID Display -->
+                            <div class="card mb-2 bg-light" id="editCurrentFileId" style="display: none;">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <small class="text-muted">Current File ID:</small>
+                                            <code class="ms-2" id="editCurrentFileIdText"></code>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('editCurrentFileIdText')">
+                                            <i class="bi bi-clipboard"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Option 1: Upload New File -->
+                            <div class="card mb-2">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Option 1: Upload New File</h6>
+                                    <input type="file" class="form-control mb-2" id="editMediaFile" accept="image/*,video/*,audio/*">
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="uploadMedia('edit')">
+                                        <i class="bi bi-upload"></i> Upload
+                                    </button>
+                                    <small class="text-muted d-block mt-1">This will replace the current file</small>
+                                    <div id="editUploadStatus" class="mt-2"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Option 2: Change File ID Manually -->
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted">Option 2: Change File ID Manually</h6>
+                                    <small class="text-muted d-block mb-2">Get file_id from messages in your admin chat or from previously uploaded files</small>
+                                    <input type="text" class="form-control" id="editMediaFileId" placeholder="Paste file_id here (e.g., AgACAgIAAxkBAAI...)">
+                                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="clearMediaFileId('edit')">
+                                        <i class="bi bi-x-circle"></i> Clear Media
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="mb-3">
@@ -502,6 +555,16 @@ function editMessage(msg) {
     document.getElementById('editSendTime').value = msg.send_time || '';
     document.getElementById('editAdditionalMinutes').value = msg.additional_minutes || 0;
     
+    // Show current file_id if exists
+    const currentFileIdDiv = document.getElementById('editCurrentFileId');
+    const currentFileIdText = document.getElementById('editCurrentFileIdText');
+    if (msg.media_file_id) {
+        currentFileIdText.textContent = msg.media_file_id;
+        currentFileIdDiv.style.display = 'block';
+    } else {
+        currentFileIdDiv.style.display = 'none';
+    }
+    
     handleMediaTypeChange('edit');
     handleDayNumberChange('edit');
     updatePreview('edit');
@@ -620,6 +683,26 @@ async function sendTestMessage() {
     } catch (error) {
         showNotification('Error: ' + error, 'error');
     }
+}
+
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    const text = element.textContent;
+    
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification('File ID copied to clipboard!', 'success');
+    }).catch(err => {
+        showNotification('Failed to copy: ' + err, 'error');
+    });
+}
+
+function clearMediaFileId(mode) {
+    if (!confirm('Are you sure you want to clear the media file? This will remove the media from this message.')) {
+        return;
+    }
+    
+    document.getElementById(`${mode}MediaFileId`).value = '';
+    showNotification('Media file ID cleared. Save to apply changes.', 'info');
 }
 </script>
 {% endblock %}
