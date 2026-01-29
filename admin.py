@@ -15,6 +15,7 @@ import asyncio
 import logging
 import json
 import shutil
+import aiosqlite
 from pyrogram import Client
 from pyrogram.errors import (
     SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired,
@@ -716,7 +717,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
             raise HTTPException(status_code=400, detail="Bot token not configured")
         
         # Get the static message from database
-        async with db.get_connection() as conn:
+        async with aiosqlite.connect(db.db_path) as conn:
             cursor = await conn.execute(
                 "SELECT * FROM static_messages WHERE id = ?",
                 (message_id,)
@@ -739,7 +740,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
         if target.isdigit():
             user_id = int(target)
             # Verify user exists in database
-            async with db.get_connection() as conn:
+            async with aiosqlite.connect(db.db_path) as conn:
                 cursor = await conn.execute(
                     "SELECT user_id FROM users WHERE user_id = ?",
                     (user_id,)
@@ -754,7 +755,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
             # Remove @ if present
             username = target[1:]
             # Try to find user by username in database
-            async with db.get_connection() as conn:
+            async with aiosqlite.connect(db.db_path) as conn:
                 cursor = await conn.execute(
                     "SELECT user_id FROM users WHERE username = ?",
                     (username,)
@@ -769,7 +770,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     )
         else:
             # Assume it's a username without @
-            async with db.get_connection() as conn:
+            async with aiosqlite.connect(db.db_path) as conn:
                 cursor = await conn.execute(
                     "SELECT user_id FROM users WHERE username = ?",
                     (target,)
