@@ -793,7 +793,7 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
             # Prepare message content
             text = msg['html_text'] if msg['html_text'] else msg['text']
             parse_mode = "HTML" if msg['html_text'] else None
-            media_type = msg.get('media_type', 'text')
+            media_type = msg.get('media_type') or 'text'
             media_file_id = msg.get('media_file_id')
             buttons_config = msg.get('buttons_config')
             
