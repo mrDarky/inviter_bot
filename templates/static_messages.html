@@ -697,12 +697,14 @@ function copyToClipboard(elementId) {
 }
 
 function clearMediaFileId(mode) {
-    if (!confirm('Are you sure you want to clear the media file? This will remove the media from this message.')) {
+    if (!confirm('Are you sure you want to clear the media file? This will also change the media type to "Text Only".')) {
         return;
     }
     
     document.getElementById(`${mode}MediaFileId`).value = '';
-    showNotification('Media file ID cleared. Save to apply changes.', 'info');
+    document.getElementById(`${mode}MediaType`).value = 'text';
+    handleMediaTypeChange(mode);
+    showNotification('Media cleared and type changed to "Text Only". Save to apply changes.', 'info');
 }
 </script>
 {% endblock %}
