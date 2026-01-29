@@ -36,11 +36,18 @@ Real-time preview of HTML-formatted messages with proper sanitization:
 - XSS protection through HTML sanitization
 - Split-screen editor with instant preview
 
-### 4. Media Upload
-Upload media files directly to Telegram:
-- Files are uploaded to Telegram servers and assigned a file_id
+### 4. Media Upload and Management
+Upload media files directly to Telegram or manage them manually:
+- **Option 1: Upload File** - Files are uploaded to Telegram servers and assigned a file_id
+- **Option 2: Manual Entry** - Enter file_id directly from Telegram admin chat messages
 - File IDs are stored in the database for reuse
-- Requires `ADMIN_CHAT_ID` environment variable to be set
+- Copy file_ids between messages to reuse the same media
+- View current file_id with one-click copy functionality
+- Clear media button to remove media from messages
+- File_id preview shown in the messages table
+- Requires `ADMIN_CHAT_ID` environment variable to be set for uploads
+
+📖 See [MEDIA_MANAGEMENT_GUIDE.md](MEDIA_MANAGEMENT_GUIDE.md) for detailed instructions on media management features.
 
 ### 5. Send Test Message
 Test static messages before they're sent to all users:
