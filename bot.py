@@ -471,14 +471,14 @@ async def send_static_messages():
                 
                 try:
                     # Send based on media type
-                    if media_type == 'text' or not media_file_id:
+                    if media_type == 'text':
                         await bot.send_message(
                             user['user_id'], 
                             text, 
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'photo':
+                    elif media_type == 'photo' and media_file_id:
                         await bot.send_photo(
                             user['user_id'],
                             media_file_id,
@@ -486,7 +486,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'video':
+                    elif media_type == 'video' and media_file_id:
                         await bot.send_video(
                             user['user_id'],
                             media_file_id,
@@ -494,7 +494,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'video_note':
+                    elif media_type == 'video_note' and media_file_id:
                         # Video notes don't support captions or buttons, send text separately
                         await bot.send_video_note(user['user_id'], media_file_id)
                         if text:
@@ -504,7 +504,7 @@ async def send_static_messages():
                                 parse_mode=parse_mode,
                                 reply_markup=reply_markup
                             )
-                    elif media_type == 'animation':
+                    elif media_type == 'animation' and media_file_id:
                         await bot.send_animation(
                             user['user_id'],
                             media_file_id,
@@ -512,7 +512,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'document':
+                    elif media_type == 'document' and media_file_id:
                         await bot.send_document(
                             user['user_id'],
                             media_file_id,
@@ -520,7 +520,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'audio':
+                    elif media_type == 'audio' and media_file_id:
                         await bot.send_audio(
                             user['user_id'],
                             media_file_id,
@@ -528,7 +528,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'voice':
+                    elif media_type == 'voice' and media_file_id:
                         # Voice messages don't support captions, send text separately
                         await bot.send_voice(user['user_id'], media_file_id)
                         if text:
@@ -539,13 +539,21 @@ async def send_static_messages():
                                 reply_markup=reply_markup
                             )
                     else:
-                        # Fallback to text
-                        await bot.send_message(
-                            user['user_id'],
-                            text,
-                            parse_mode=parse_mode,
-                            reply_markup=reply_markup
-                        )
+                        # Fallback to text if media type is not recognized or media file is missing
+                        if media_type != 'text' and not media_file_id:
+                            logger.warning(f"Media type '{media_type}' specified but no media_file_id provided for message {msg['id']} to user {user['user_id']}. Falling back to text only.")
+                        elif media_type not in ['text', 'photo', 'video', 'video_note', 'animation', 'document', 'audio', 'voice']:
+                            logger.warning(f"Unrecognized media type '{media_type}' for message {msg['id']} to user {user['user_id']}. Falling back to text only.")
+                        
+                        if text:
+                            await bot.send_message(
+                                user['user_id'],
+                                text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        else:
+                            logger.error(f"Cannot send message {msg['id']} to user {user['user_id']}: no text content and media_file_id missing")
                     
                     # Mark message as sent
                     await db.mark_static_message_sent(user['user_id'], msg['id'])
