@@ -696,6 +696,227 @@ async def toggle_static_message(message_id: int, _: None = Depends(require_auth)
     return {"status": "success", "message": "Static message toggled"}
 
 
+class SendTestRequest(BaseModel):
+    target: str  # Can be user_id (numeric) or username (string)
+
+
+@app.post("/api/static-messages/{message_id}/send-test")
+async def send_test_message(message_id: int, request: SendTestRequest, _: None = Depends(require_auth)):
+    """Send a test static message to a specific user"""
+    try:
+        from aiogram import Bot
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        # Get bot token
+        bot_token = await db.get_setting('bot_token')
+        if not bot_token:
+            bot_token = os.getenv('BOT_TOKEN')
+        
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token not configured")
+        
+        # Get the static message from database
+        async with db.get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM static_messages WHERE id = ?",
+                (message_id,)
+            )
+            msg = await cursor.fetchone()
+        
+        if not msg:
+            raise HTTPException(status_code=404, detail="Static message not found")
+        
+        # Convert msg to dict
+        columns = ['id', 'day_number', 'text', 'html_text', 'media_type', 'media_file_id', 
+                  'buttons_config', 'send_time', 'additional_minutes', 'is_active', 'created_at']
+        msg = dict(zip(columns, msg))
+        
+        # Determine target user ID
+        target = request.target.strip()
+        user_id = None
+        
+        # Check if target is a numeric user ID or username
+        if target.isdigit():
+            user_id = int(target)
+            # Verify user exists in database
+            async with db.get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT user_id FROM users WHERE user_id = ?",
+                    (user_id,)
+                )
+                result = await cursor.fetchone()
+                if not result:
+                    raise HTTPException(
+                        status_code=404, 
+                        detail=f"User ID {user_id} not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
+        elif target.startswith('@'):
+            # Remove @ if present
+            username = target[1:]
+            # Try to find user by username in database
+            async with db.get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT user_id FROM users WHERE username = ?",
+                    (username,)
+                )
+                result = await cursor.fetchone()
+                if result:
+                    user_id = result[0]
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Username '@{username}' not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
+        else:
+            # Assume it's a username without @
+            async with db.get_connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT user_id FROM users WHERE username = ?",
+                    (target,)
+                )
+                result = await cursor.fetchone()
+                if result:
+                    user_id = result[0]
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Username '{target}' not found in database. The user must have interacted with the bot before you can send them a test message."
+                    )
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid target format. Use numeric user ID or username.")
+        
+        bot_instance = Bot(token=bot_token)
+        
+        try:
+            # Prepare message content
+            text = msg['html_text'] if msg['html_text'] else msg['text']
+            parse_mode = "HTML" if msg['html_text'] else None
+            media_type = msg.get('media_type', 'text')
+            media_file_id = msg.get('media_file_id')
+            buttons_config = msg.get('buttons_config')
+            
+            # Create markup with buttons
+            reply_markup = None
+            if buttons_config and buttons_config.strip():
+                rows = []
+                for line in buttons_config.strip().split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Split by comma for multiple buttons in one row
+                    buttons_in_row = []
+                    for button_str in line.split(','):
+                        button_str = button_str.strip()
+                        if '|' in button_str:
+                            parts = button_str.split('|', 1)
+                            button_text = parts[0].strip()
+                            url = parts[1].strip()
+                            if button_text and url:
+                                buttons_in_row.append(InlineKeyboardButton(text=button_text, url=url))
+                    
+                    if buttons_in_row:
+                        rows.append(buttons_in_row)
+                
+                if rows:
+                    reply_markup = InlineKeyboardMarkup(inline_keyboard=rows)
+            
+            # Send based on media type
+            if media_type == 'text' or not media_file_id:
+                await bot_instance.send_message(
+                    user_id, 
+                    text, 
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'photo':
+                await bot_instance.send_photo(
+                    user_id,
+                    media_file_id,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'video':
+                await bot_instance.send_video(
+                    user_id,
+                    media_file_id,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'video_note':
+                # Video notes don't support captions or buttons, send text separately
+                await bot_instance.send_video_note(user_id, media_file_id)
+                if text:
+                    await bot_instance.send_message(
+                        user_id,
+                        text,
+                        parse_mode=parse_mode,
+                        reply_markup=reply_markup
+                    )
+            elif media_type == 'animation':
+                await bot_instance.send_animation(
+                    user_id,
+                    media_file_id,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'document':
+                await bot_instance.send_document(
+                    user_id,
+                    media_file_id,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'audio':
+                await bot_instance.send_audio(
+                    user_id,
+                    media_file_id,
+                    caption=text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            elif media_type == 'voice':
+                # Voice messages don't support captions, send text separately
+                await bot_instance.send_voice(user_id, media_file_id)
+                if text:
+                    await bot_instance.send_message(
+                        user_id,
+                        text,
+                        parse_mode=parse_mode,
+                        reply_markup=reply_markup
+                    )
+            else:
+                # Fallback to text
+                await bot_instance.send_message(
+                    user_id,
+                    text,
+                    parse_mode=parse_mode,
+                    reply_markup=reply_markup
+                )
+            
+            return {
+                "status": "success",
+                "message": f"Test message sent successfully to user {user_id}"
+            }
+        except Exception as e:
+            logger.error(f"Error sending test message: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+        finally:
+            # Always close the bot session
+            await bot_instance.session.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in send_test_message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/static-messages/upload-media")
 async def upload_media(
     file: UploadFile = File(...),
