@@ -542,12 +542,18 @@ async def send_static_messages():
                         # Fallback to text if media type is not recognized or media file is missing
                         if media_type != 'text' and not media_file_id:
                             logger.warning(f"Media type '{media_type}' specified but no media_file_id provided for message {msg['id']} to user {user['user_id']}. Falling back to text only.")
-                        await bot.send_message(
-                            user['user_id'],
-                            text,
-                            parse_mode=parse_mode,
-                            reply_markup=reply_markup
-                        )
+                        elif media_type not in ['text', 'photo', 'video', 'video_note', 'animation', 'document', 'audio', 'voice']:
+                            logger.warning(f"Unrecognized media type '{media_type}' for message {msg['id']} to user {user['user_id']}. Falling back to text only.")
+                        
+                        if text:
+                            await bot.send_message(
+                                user['user_id'],
+                                text,
+                                parse_mode=parse_mode,
+                                reply_markup=reply_markup
+                            )
+                        else:
+                            logger.error(f"Cannot send message {msg['id']} to user {user['user_id']}: no text content and media_file_id missing")
                     
                     # Mark message as sent
                     await db.mark_static_message_sent(user['user_id'], msg['id'])

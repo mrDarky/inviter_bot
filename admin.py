@@ -895,12 +895,18 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 # Fallback to text if media type is not recognized or media file is missing
                 if media_type != 'text' and not media_file_id:
                     logger.warning(f"Media type '{media_type}' specified but no media_file_id provided for test message {message_id} to user {user_id}. Falling back to text only.")
-                await bot_instance.send_message(
-                    user_id,
-                    text,
-                    parse_mode=parse_mode,
-                    reply_markup=reply_markup
-                )
+                elif media_type not in ['text', 'photo', 'video', 'video_note', 'animation', 'document', 'audio', 'voice']:
+                    logger.warning(f"Unrecognized media type '{media_type}' for test message {message_id} to user {user_id}. Falling back to text only.")
+                
+                if text:
+                    await bot_instance.send_message(
+                        user_id,
+                        text,
+                        parse_mode=parse_mode,
+                        reply_markup=reply_markup
+                    )
+                else:
+                    raise HTTPException(status_code=400, detail=f"Cannot send message: no text content and media_file_id missing for media type '{media_type}'")
             
             return {
                 "status": "success",
