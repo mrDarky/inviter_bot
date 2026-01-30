@@ -9,6 +9,7 @@ from aiogram.types import ChatMemberUpdated, ChatJoinRequest, ReplyKeyboardMarku
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from utils import normalize_media_type
 
 # Load environment variables
 load_dotenv()
@@ -462,7 +463,7 @@ async def send_static_messages():
                 # Prepare message content
                 text = msg['html_text'] if msg['html_text'] else msg['text']
                 parse_mode = "HTML" if msg['html_text'] else None
-                media_type = msg.get('media_type', 'text')
+                media_type = normalize_media_type(msg.get('media_type'))
                 media_file_id = msg.get('media_file_id')
                 buttons_config = msg.get('buttons_config')
                 
