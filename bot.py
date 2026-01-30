@@ -9,6 +9,7 @@ from aiogram.types import ChatMemberUpdated, ChatJoinRequest, ReplyKeyboardMarku
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from utils import normalize_media_type
 
 # Load environment variables
 load_dotenv()
@@ -31,41 +32,6 @@ db = Database(DATABASE_PATH)
 
 # Scheduler for scheduled messages
 scheduler = AsyncIOScheduler()
-
-
-def normalize_media_type(media_type):
-    """
-    Normalize media type value to string format.
-    Handles legacy numeric media type values:
-    0 or '0' -> 'text'
-    1 or '1' -> 'photo'
-    2 or '2' -> 'video'
-    3 or '3' -> 'document'
-    """
-    if media_type is None:
-        return 'text'
-    
-    # Convert to string if it's a number
-    media_type_str = str(media_type)
-    
-    # Map numeric values to media type strings
-    numeric_mapping = {
-        '0': 'text',
-        '1': 'photo',
-        '2': 'video',
-        '3': 'document',
-        '4': 'animation',
-        '5': 'audio',
-        '6': 'voice',
-        '7': 'video_note'
-    }
-    
-    # If it's a numeric value, convert it
-    if media_type_str in numeric_mapping:
-        return numeric_mapping[media_type_str]
-    
-    # Otherwise return as-is (already a proper string)
-    return media_type_str
 
 
 class DatabaseLogHandler(logging.Handler):
@@ -497,7 +463,7 @@ async def send_static_messages():
                 # Prepare message content
                 text = msg['html_text'] if msg['html_text'] else msg['text']
                 parse_mode = "HTML" if msg['html_text'] else None
-                media_type = normalize_media_type(msg.get('media_type', 'text'))
+                media_type = normalize_media_type(msg.get('media_type') or 'text')
                 media_file_id = msg.get('media_file_id')
                 buttons_config = msg.get('buttons_config')
                 

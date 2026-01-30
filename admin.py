@@ -23,6 +23,7 @@ from pyrogram.errors import (
     ChannelPrivate, PeerIdInvalid, UsernameInvalid, UsernameNotOccupied
 )
 from pyrogram.enums import ChatMemberStatus
+from utils import normalize_media_type
 
 # Load environment variables
 load_dotenv()
@@ -55,41 +56,6 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 # Store active Pyrogram clients and their metadata
 pyrogram_clients = {}
 pyrogram_sessions_metadata = {}
-
-
-def normalize_media_type(media_type):
-    """
-    Normalize media type value to string format.
-    Handles legacy numeric media type values:
-    0 or '0' -> 'text'
-    1 or '1' -> 'photo'
-    2 or '2' -> 'video'
-    3 or '3' -> 'document'
-    """
-    if media_type is None:
-        return 'text'
-    
-    # Convert to string if it's a number
-    media_type_str = str(media_type)
-    
-    # Map numeric values to media type strings
-    numeric_mapping = {
-        '0': 'text',
-        '1': 'photo',
-        '2': 'video',
-        '3': 'document',
-        '4': 'animation',
-        '5': 'audio',
-        '6': 'voice',
-        '7': 'video_note'
-    }
-    
-    # If it's a numeric value, convert it
-    if media_type_str in numeric_mapping:
-        return numeric_mapping[media_type_str]
-    
-    # Otherwise return as-is (already a proper string)
-    return media_type_str
 
 
 def normalize_channel_id(channel_id: str) -> Union[int, str]:
