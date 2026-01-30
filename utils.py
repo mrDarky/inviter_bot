@@ -3,6 +3,30 @@ Utility functions for the bot
 """
 
 
+def is_valid_file_id(file_id):
+    """
+    Validate if a file_id is valid for Telegram API.
+    
+    A valid file_id should:
+    - Be a non-empty string after stripping whitespace
+    - Not be None
+    
+    Args:
+        file_id: File ID to validate (can be str, None, or other type)
+        
+    Returns:
+        bool: True if file_id is valid, False otherwise
+    """
+    if file_id is None:
+        return False
+    
+    if not isinstance(file_id, str):
+        return False
+    
+    # Strip whitespace and check if non-empty
+    return len(file_id.strip()) > 0
+
+
 def normalize_media_type(media_type):
     """
     Normalize media type value to string format.
