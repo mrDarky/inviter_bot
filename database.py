@@ -478,6 +478,12 @@ class Database:
     # Static messages
     async def add_static_message(self, day_number: int, text: str, html_text: str, media_type: str = 'text', media_file_id: str = None, buttons_config: str = None, send_time: str = None, additional_minutes: int = 0):
         """Add static message"""
+        # Normalize file_id: strip whitespace and convert empty strings to None
+        if media_file_id is not None and isinstance(media_file_id, str):
+            media_file_id = media_file_id.strip()
+            if not media_file_id:
+                media_file_id = None
+        
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 INSERT INTO static_messages (day_number, text, html_text, media_type, media_file_id, buttons_config, send_time, additional_minutes)
@@ -498,6 +504,12 @@ class Database:
     
     async def update_static_message(self, message_id: int, day_number: int, text: str, html_text: str, media_type: str = 'text', media_file_id: str = None, buttons_config: str = None, send_time: str = None, additional_minutes: int = 0):
         """Update static message"""
+        # Normalize file_id: strip whitespace and convert empty strings to None
+        if media_file_id is not None and isinstance(media_file_id, str):
+            media_file_id = media_file_id.strip()
+            if not media_file_id:
+                media_file_id = None
+        
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 UPDATE static_messages SET day_number = ?, text = ?, html_text = ?, media_type = ?, media_file_id = ?, buttons_config = ?, send_time = ?, additional_minutes = ? WHERE id = ?

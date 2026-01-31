@@ -9,7 +9,7 @@ from aiogram.types import ChatMemberUpdated, ChatJoinRequest, ReplyKeyboardMarku
 from dotenv import load_dotenv
 from database import Database
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from utils import normalize_media_type
+from utils import normalize_media_type, is_valid_file_id
 
 # Load environment variables
 load_dotenv()
@@ -465,6 +465,11 @@ async def send_static_messages():
                 parse_mode = "HTML" if msg['html_text'] else None
                 media_type = normalize_media_type(msg.get('media_type'))
                 media_file_id = msg.get('media_file_id')
+                
+                # Validate and normalize file_id (strip whitespace)
+                if media_file_id and isinstance(media_file_id, str):
+                    media_file_id = media_file_id.strip()
+                
                 buttons_config = msg.get('buttons_config')
                 
                 # Create markup with buttons and viewed button
@@ -479,7 +484,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'photo' and media_file_id:
+                    elif media_type == 'photo' and is_valid_file_id(media_file_id):
                         await bot.send_photo(
                             user['user_id'],
                             media_file_id,
@@ -487,7 +492,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'video' and media_file_id:
+                    elif media_type == 'video' and is_valid_file_id(media_file_id):
                         await bot.send_video(
                             user['user_id'],
                             media_file_id,
@@ -495,7 +500,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'video_note' and media_file_id:
+                    elif media_type == 'video_note' and is_valid_file_id(media_file_id):
                         # Video notes don't support captions or buttons, send text separately
                         await bot.send_video_note(user['user_id'], media_file_id)
                         if text:
@@ -505,7 +510,7 @@ async def send_static_messages():
                                 parse_mode=parse_mode,
                                 reply_markup=reply_markup
                             )
-                    elif media_type == 'animation' and media_file_id:
+                    elif media_type == 'animation' and is_valid_file_id(media_file_id):
                         await bot.send_animation(
                             user['user_id'],
                             media_file_id,
@@ -513,7 +518,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'document' and media_file_id:
+                    elif media_type == 'document' and is_valid_file_id(media_file_id):
                         await bot.send_document(
                             user['user_id'],
                             media_file_id,
@@ -521,7 +526,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'audio' and media_file_id:
+                    elif media_type == 'audio' and is_valid_file_id(media_file_id):
                         await bot.send_audio(
                             user['user_id'],
                             media_file_id,
@@ -529,7 +534,7 @@ async def send_static_messages():
                             parse_mode=parse_mode,
                             reply_markup=reply_markup
                         )
-                    elif media_type == 'voice' and media_file_id:
+                    elif media_type == 'voice' and is_valid_file_id(media_file_id):
                         # Voice messages don't support captions, send text separately
                         await bot.send_voice(user['user_id'], media_file_id)
                         if text:
