@@ -839,8 +839,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'photo' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending photo with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending photo with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 await bot_instance.send_photo(
                     user_id,
                     media_file_id,
@@ -850,8 +850,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'video' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending video with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending video with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 await bot_instance.send_video(
                     user_id,
                     media_file_id,
@@ -861,8 +861,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'video_note' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending video_note with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending video_note with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 # Video notes don't support captions or buttons, send text separately
                 await bot_instance.send_video_note(user_id, media_file_id)
                 if text:
@@ -874,8 +874,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                     )
             elif media_type == 'animation' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending animation with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending animation with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 await bot_instance.send_animation(
                     user_id,
                     media_file_id,
@@ -885,8 +885,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'document' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending document with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending document with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 await bot_instance.send_document(
                     user_id,
                     media_file_id,
@@ -896,8 +896,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'audio' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending audio with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending audio with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 await bot_instance.send_audio(
                     user_id,
                     media_file_id,
@@ -907,8 +907,8 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
                 )
             elif media_type == 'voice' and is_valid_file_id(media_file_id):
                 # Log file_id details for debugging
-                logger.info(f"Sending voice with file_id: '{media_file_id}'")
-                logger.info(f"File_id length: {len(media_file_id)}, character codes: {[ord(c) for c in media_file_id]}")
+                logger.info(f"Sending voice with file_id: '{media_file_id}' (length: {len(media_file_id)})")
+                logger.debug(f"File_id character codes: {[ord(c) for c in media_file_id]}")
                 # Voice messages don't support captions, send text separately
                 await bot_instance.send_voice(user_id, media_file_id)
                 if text:
