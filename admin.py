@@ -719,19 +719,18 @@ async def send_test_message(message_id: int, request: SendTestRequest, _: None =
         
         # Get the static message from database
         async with aiosqlite.connect(db.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
                 "SELECT * FROM static_messages WHERE id = ?",
                 (message_id,)
             )
-            msg = await cursor.fetchone()
+            row = await cursor.fetchone()
         
-        if not msg:
+        if not row:
             raise HTTPException(status_code=404, detail="Static message not found")
         
-        # Convert msg to dict
-        columns = ['id', 'day_number', 'text', 'html_text', 'media_type', 'media_file_id', 
-                  'buttons_config', 'send_time', 'additional_minutes', 'is_active', 'created_at']
-        msg = dict(zip(columns, msg))
+        # Convert row to dict
+        msg = dict(row)
         
         # Determine target user ID
         target = request.target.strip()
