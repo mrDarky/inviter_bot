@@ -11,6 +11,12 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-3">
+            <div class="col-md-12">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" name="search" 
+                       value="{{ search or '' }}" 
+                       placeholder="Search by name, username, or user ID">
+            </div>
             <div class="col-md-3">
                 <label class="form-label">Status</label>
                 <select class="form-select" name="status">
@@ -163,6 +169,7 @@
                 {% if date_from %}{% set _ = filter_params.append('date_from=' + date_from) %}{% endif %}
                 {% if date_to %}{% set _ = filter_params.append('date_to=' + date_to) %}{% endif %}
                 {% if older_than_count %}{% set _ = filter_params.append('older_than_count=' + older_than_count|string) %}{% endif %}
+                {% if search %}{% set _ = filter_params.append('search=' + search) %}{% endif %}
                 {% set filter_query = ('&' + '&'.join(filter_params)) if filter_params else '' %}
                 
                 {% if page > 1 %}

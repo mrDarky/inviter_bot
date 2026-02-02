@@ -469,7 +469,8 @@ async def invite_requests_page(
     chat_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    older_than_count: Optional[str] = Query(None)
+    older_than_count: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
 ):
     """Invite requests page"""
     limit = 20
@@ -490,14 +491,16 @@ async def invite_requests_page(
         chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count_int
+        older_than_count=older_than_count_int,
+        search=search
     )
     total = await db.get_join_request_count(
         status=status,
         chat_id=chat_id_int,
         date_from=date_from,
         date_to=date_to,
-        older_than_count=older_than_count_int
+        older_than_count=older_than_count_int,
+        search=search
     )
     total_pages = (total + limit - 1) // limit
     
@@ -514,7 +517,8 @@ async def invite_requests_page(
         "selected_chat_id": chat_id_int,
         "date_from": date_from,
         "date_to": date_to,
-        "older_than_count": older_than_count_int
+        "older_than_count": older_than_count_int,
+        "search": search
     })
 
 

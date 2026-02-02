@@ -766,7 +766,7 @@ class Database:
     
     async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0, 
                                 chat_id: int = None, date_from: str = None, date_to: str = None, 
-                                older_than_count: int = None):
+                                older_than_count: int = None, search: str = None):
         """Get join requests with optional filters"""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -790,6 +790,12 @@ class Database:
                 query += " AND request_date < datetime(?, '+1 day')"
                 params.append(date_to)
             
+            if search:
+                # Search in user_id, username, first_name, or last_name
+                query += " AND (CAST(user_id AS TEXT) LIKE ? OR username LIKE ? OR first_name LIKE ? OR last_name LIKE ?)"
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+            
             query += " ORDER BY request_date DESC"
             
             # Apply older_than_count filter if specified (skip the first N oldest results)
@@ -806,7 +812,7 @@ class Database:
     
     async def get_join_request_count(self, status: str = 'pending', chat_id: int = None, 
                                      date_from: str = None, date_to: str = None, 
-                                     older_than_count: int = None):
+                                     older_than_count: int = None, search: str = None):
         """Get total join request count with optional filters"""
         async with aiosqlite.connect(self.db_path) as db:
             query = "SELECT COUNT(*) FROM join_requests WHERE 1=1"
@@ -828,6 +834,12 @@ class Database:
                 # Add one day to include the entire end date
                 query += " AND request_date < datetime(?, '+1 day')"
                 params.append(date_to)
+            
+            if search:
+                # Search in user_id, username, first_name, or last_name
+                query += " AND (CAST(user_id AS TEXT) LIKE ? OR username LIKE ? OR first_name LIKE ? OR last_name LIKE ?)"
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
             
             async with db.execute(query, params) as cursor:
                 result = await cursor.fetchone()
