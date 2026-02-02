@@ -778,7 +778,8 @@ class Database:
             # Escape special LIKE characters
             escaped_search = self._escape_like_pattern(search)
             # Search in user_id, username, first_name, or last_name
-            query += " AND (CAST(user_id AS TEXT) LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\' OR first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\')"
+            # Use raw string for ESCAPE clause: backslash is the escape character
+            query += r" AND (CAST(user_id AS TEXT) LIKE ? ESCAPE '\' OR username LIKE ? ESCAPE '\' OR first_name LIKE ? ESCAPE '\' OR last_name LIKE ? ESCAPE '\')"
             search_pattern = f"%{escaped_search}%"
             params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
         return query, params
