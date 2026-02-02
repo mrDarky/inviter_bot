@@ -765,7 +765,10 @@ class Database:
             return not exists  # Return True if it was a new insert
     
     def _escape_like_pattern(self, search: str) -> str:
-        """Escape SQL LIKE special characters (% and _) in search string"""
+        """Escape SQL LIKE special characters (% and _) in search string
+        
+        Using backslash as escape character to match SQL ESCAPE clause.
+        """
         if not search:
             return search
         # Escape backslash first, then % and _, to treat them as literal characters
