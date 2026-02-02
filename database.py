@@ -768,7 +768,8 @@ class Database:
         """Escape SQL LIKE special characters (% and _) in search string"""
         if not search:
             return search
-        # Escape % and _ to treat them as literal characters
+        # Escape backslash first, then % and _, to treat them as literal characters
+        # Order matters: if we escape \ last, we'd double-escape the backslashes we just added
         search = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         return search
     
@@ -778,8 +779,15 @@ class Database:
             # Escape special LIKE characters
             escaped_search = self._escape_like_pattern(search)
             # Search in user_id, username, first_name, or last_name
-            # Use raw string for ESCAPE clause: backslash is the escape character
-            query += r" AND (CAST(user_id AS TEXT) LIKE ? ESCAPE '\' OR username LIKE ? ESCAPE '\' OR first_name LIKE ? ESCAPE '\' OR last_name LIKE ? ESCAPE '\')"
+            # ESCAPE '\\' specifies backslash as the escape character in SQL
+            # (In Python string '\\' becomes single backslash in SQL)
+            escape_clause = " ESCAPE '\\'"
+            query += (
+                " AND (CAST(user_id AS TEXT) LIKE ?" + escape_clause +
+                " OR username LIKE ?" + escape_clause +
+                " OR first_name LIKE ?" + escape_clause +
+                " OR last_name LIKE ?" + escape_clause + ")"
+            )
             search_pattern = f"%{escaped_search}%"
             params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
         return query, params
