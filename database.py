@@ -764,6 +764,25 @@ class Database:
             await db.commit()
             return not exists  # Return True if it was a new insert
     
+    def _escape_like_pattern(self, search: str) -> str:
+        """Escape SQL LIKE special characters (% and _) in search string"""
+        if not search:
+            return search
+        # Escape % and _ to treat them as literal characters
+        search = search.replace('%', r'\%').replace('_', r'\_')
+        return search
+    
+    def _add_search_filter(self, query: str, params: list, search: str) -> tuple:
+        """Helper method to add search filter to SQL query"""
+        if search:
+            # Escape special LIKE characters
+            escaped_search = self._escape_like_pattern(search)
+            # Search in user_id, username, first_name, or last_name
+            query += " AND (CAST(user_id AS TEXT) LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\' OR first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\')"
+            search_pattern = f"%{escaped_search}%"
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+        return query, params
+    
     async def get_join_requests(self, status: str = 'pending', limit: int = 100, offset: int = 0, 
                                 chat_id: int = None, date_from: str = None, date_to: str = None, 
                                 older_than_count: int = None, search: str = None):
@@ -790,11 +809,8 @@ class Database:
                 query += " AND request_date < datetime(?, '+1 day')"
                 params.append(date_to)
             
-            if search:
-                # Search in user_id, username, first_name, or last_name
-                query += " AND (CAST(user_id AS TEXT) LIKE ? OR username LIKE ? OR first_name LIKE ? OR last_name LIKE ?)"
-                search_pattern = f"%{search}%"
-                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+            # Add search filter using helper method
+            query, params = self._add_search_filter(query, params, search)
             
             query += " ORDER BY request_date DESC"
             
@@ -835,11 +851,8 @@ class Database:
                 query += " AND request_date < datetime(?, '+1 day')"
                 params.append(date_to)
             
-            if search:
-                # Search in user_id, username, first_name, or last_name
-                query += " AND (CAST(user_id AS TEXT) LIKE ? OR username LIKE ? OR first_name LIKE ? OR last_name LIKE ?)"
-                search_pattern = f"%{search}%"
-                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+            # Add search filter using helper method
+            query, params = self._add_search_filter(query, params, search)
             
             async with db.execute(query, params) as cursor:
                 result = await cursor.fetchone()
