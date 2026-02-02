@@ -769,7 +769,7 @@ class Database:
         if not search:
             return search
         # Escape % and _ to treat them as literal characters
-        search = search.replace('%', r'\%').replace('_', r'\_')
+        search = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         return search
     
     def _add_search_filter(self, query: str, params: list, search: str) -> tuple:
